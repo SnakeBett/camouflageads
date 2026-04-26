@@ -85,7 +85,7 @@ export async function loadFFmpeg(
   }
 
   const ffmpeg = new FFmpeg();
-  ffmpeg.on("log", ({ message }) => onLog(message));
+  ffmpeg.on("log", ({ message }: { message: string }) => onLog(message));
 
   onProgress?.("Carregando FFmpeg...");
 
@@ -100,7 +100,7 @@ export async function loadFFmpeg(
       ffmpegInstance = ffmpeg;
       return ffmpeg;
     })
-    .catch((err) => {
+    .catch((err: unknown) => {
       ffmpegInstance = null;
       loadingPromise = null;
       throw err;
@@ -235,7 +235,8 @@ export async function processAudioCamouflage(
     }
 
     const mimeType = isVideo ? (file.type || "video/mp4") : "audio/mpeg";
-    const blob = new Blob([new Uint8Array(outputData.buffer)], { type: mimeType });
+    const bytes = new Uint8Array(outputData.buffer as ArrayBuffer);
+    const blob = new Blob([bytes], { type: mimeType });
 
     return {
       url: URL.createObjectURL(blob),
