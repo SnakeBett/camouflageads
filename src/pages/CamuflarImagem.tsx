@@ -90,7 +90,6 @@ export default function CamuflarImagem() {
         coverImg,
         creativeFiles,
         (done, total) => setProgress(Math.round((done / total) * 100)),
-        0.9,
         noiseLevel,
       );
 
@@ -208,17 +207,17 @@ export default function CamuflarImagem() {
         <Card className="border-border/40">
           <CardContent className="pt-6 space-y-4">
             <div className="flex items-center justify-between gap-2">
-              <h3 className="text-sm font-medium">Intensidade do ruído</h3>
+              <h3 className="text-sm font-medium">Intensidade da camuflagem</h3>
               <span className="text-sm font-semibold tabular-nums text-primary">
                 {noiseLevel}
                 <span className="ml-1.5 font-normal text-muted-foreground">
-                  {noiseLevel <= 4 ? "(suave)" : noiseLevel <= 9 ? "(moderado)" : "(agressivo)"}
+                  {noiseLevel <= 4 ? "(mais criativo)" : noiseLevel <= 9 ? "(equilíbrio)" : "(mais capa)"}
                 </span>
               </span>
             </div>
             <div className="flex justify-between text-[10px] uppercase tracking-wide text-muted-foreground px-0.5">
-              <span>Suave</span>
-              <span>Agressivo</span>
+              <span>Mais criativo</span>
+              <span>Mais capa</span>
             </div>
             <Slider
               min={1}
@@ -228,8 +227,9 @@ export default function CamuflarImagem() {
               onValueChange={([v]) => setNoiseLevel(v)}
             />
             <p className="text-xs text-muted-foreground">
-              Afeta ruído por pixel, padrão anti-IA e contraste. A cada processamento usa o valor atual do
-              slider. Recomendado: 5–8 para equilíbrio.
+              Controla quanto da <strong className="text-foreground font-medium">imagem de capa</strong> entra na
+              mistura com os criativos (valores maiores = capa mais aparente) e, ao mesmo tempo, a força do ruído
+              anti-IA nos pixels. Cada processamento usa o valor atual do slider.
             </p>
           </CardContent>
         </Card>

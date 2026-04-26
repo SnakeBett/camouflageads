@@ -24,6 +24,18 @@ function randomSeed(): number {
   return Math.floor(Math.random() * 2147483647);
 }
 
+/**
+ * Fração da imagem de CAPA no blend inicial (etapa 1).
+ * Valores mais altos no slider = mais capa “aparente” no pixel antes do ruído anti-IA.
+ * Curva calibrada para que o meio (~6–8) fique próximo do comportamento antigo (~90% capa).
+ */
+function noiseLevelToCoverMix(noiseLevel: number): number {
+  const n = Math.max(1, Math.min(15, noiseLevel));
+  const u = (n - 1) / 14;
+  const coverMix = 0.55 + 0.42 * Math.pow(u, 0.38);
+  return Math.min(0.97, Math.max(0.32, coverMix));
+}
+
 function xorshift(state: PRNGState): number {
   let s = state.s;
   s ^= s << 13;
@@ -169,14 +181,12 @@ export interface CamouflageResult {
  * @param coverImage - Imagem de capa (o que o Facebook/IA vai "ver")
  * @param creativeImage - Imagem criativa real (o que o lead/usuário vê)
  * @param index - Índice da imagem no batch (pra nomear o arquivo)
- * @param blendIntensity - Intensidade do blend (0.0 a 1.0, padrão 0.9 = 90% criativo)
- * @param noiseLevel - Nível do ruído adversarial (padrão 6)
+ * @param noiseLevel - Slider 1–15: controla mistura capa×criativo e força do ruído anti-IA
  */
 export function camouflageImage(
   coverImage: HTMLImageElement,
   creativeImage: HTMLImageElement,
   index: number = 0,
-  blendIntensity: number = 0.9,
   noiseLevel: number = 6,
 ): CamouflageResult {
   const width = creativeImage.naturalWidth || creativeImage.width;
@@ -195,13 +205,13 @@ export function camouflageImage(
   const outputData = ctx.createImageData(width, height);
 
   // ---- ETAPA 1: Blend (mistura cover + creative) ----
-  const creativeWeight = blendIntensity;
-  const coverWeight = 1 - blendIntensity;
+  const coverMix = noiseLevelToCoverMix(noiseLevel);
+  const creativeMix = 1 - coverMix;
 
   for (let i = 0; i < coverData.data.length; i += 4) {
-    outputData.data[i]     = Math.round(coverData.data[i]     * creativeWeight + creativeData.data[i]     * coverWeight);
-    outputData.data[i + 1] = Math.round(coverData.data[i + 1] * creativeWeight + creativeData.data[i + 1] * coverWeight);
-    outputData.data[i + 2] = Math.round(coverData.data[i + 2] * creativeWeight + creativeData.data[i + 2] * coverWeight);
+    outputData.data[i]     = Math.round(coverData.data[i]     * coverMix + creativeData.data[i]     * creativeMix);
+    outputData.data[i + 1] = Math.round(coverData.data[i + 1] * coverMix + creativeData.data[i + 1] * creativeMix);
+    outputData.data[i + 2] = Math.round(coverData.data[i + 2] * coverMix + creativeData.data[i + 2] * creativeMix);
     outputData.data[i + 3] = 255; // Alpha always opaque
   }
 
@@ -226,7 +236,7 @@ export function camouflageImage(
   const unique = typeof crypto !== "undefined" && crypto.randomUUID
     ? crypto.randomUUID().slice(0, 8)
     : `${randomSeed().toString(36)}`;
-  const fileName = `camouflage_${index + 1}_n${noiseLevel}_${Date.now()}_${unique}.png`;
+  const fileName = `camouflage_${index + 1}_n${noiseLevel}_c${Math.round(coverMix * 100)}_${Date.now()}_${unique}.png`;
 
   return {
     camouflaged,
@@ -246,21 +256,19 @@ export function camouflageImage(
  * @param coverImage - Imagem de capa carregada
  * @param creativeFiles - Array de Files dos criativos
  * @param onProgress - Callback (processados, total)
- * @param blendIntensity - Intensidade do blend (0.0-1.0)
- * @param noiseLevel - Nível do ruído adversarial
+ * @param noiseLevel - Slider 1–15 (mistura capa + ruído)
  */
 export async function batchCamouflage(
   coverImage: HTMLImageElement,
   creativeFiles: File[],
   onProgress?: (done: number, total: number) => void,
-  blendIntensity: number = 0.9,
   noiseLevel: number = 6,
 ): Promise<CamouflageResult[]> {
   const results: CamouflageResult[] = [];
 
   for (let i = 0; i < creativeFiles.length; i++) {
     const img = await loadImage(creativeFiles[i]);
-    const result = camouflageImage(coverImage, img, i, blendIntensity, noiseLevel);
+    const result = camouflageImage(coverImage, img, i, noiseLevel);
     results.push(result);
     onProgress?.(i + 1, creativeFiles.length);
     await new Promise<void>((resolve) => {
