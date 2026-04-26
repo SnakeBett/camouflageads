@@ -60,8 +60,7 @@ export default function CamuflarTexto() {
         body: { count: 1, type: "text" },
       });
       if (error || !data?.allowed) {
-        toast.error("Seu plano não permite esta ação.");
-        navigate("/planos");
+        toast.error(data?.reason || "Seu plano não permite esta ação.");
         return;
       }
 

@@ -4,6 +4,7 @@ import { toast } from "sonner";
 import { useAuth } from "@/hooks/AuthProvider";
 import { supabase } from "@/lib/supabase";
 import { getRemainingCredits } from "@/utils/plan-utils";
+import { processAudioCamouflage } from "@/utils/audio-camouflage";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
@@ -95,8 +96,8 @@ export default function CamuflarAudioPuro() {
         body: { count: files.length, type: "audio_pure" },
       });
 
-      if (error || data?.error) {
-        toast.error(data?.error || error?.message || "Erro ao validar plano.");
+      if (error || !data?.allowed) {
+        toast.error(data?.reason || error?.message || "Erro ao validar plano.");
         setProcessing(false);
         setProgressText("");
         setProgressValue(0);
@@ -110,7 +111,8 @@ export default function CamuflarAudioPuro() {
       setProgressValue(20);
       toast.info("Processamento de áudio iniciado!");
 
-      // TODO: integrar FFmpeg WASM aqui
+      const ffmpegMode = mode === "basic" ? "basico" : "agressivo";
+
       for (let i = 0; i < files.length; i++) {
         setResults((prev) =>
           prev.map((r, j) => (j === i ? { ...r, status: "processing" } : r)),
@@ -118,11 +120,21 @@ export default function CamuflarAudioPuro() {
         setProgressText(`Processando ${i + 1}/${files.length}: ${files[i].name}`);
         setProgressValue(20 + Math.round(((i + 1) / files.length) * 70));
 
-        await new Promise((r) => setTimeout(r, 600));
-
-        setResults((prev) =>
-          prev.map((r, j) => (j === i ? { ...r, status: "done" } : r)),
-        );
+        try {
+          const { url, outputName } = await processAudioCamouflage(
+            files[i],
+            ffmpegMode,
+            (msg) => setProgressText(`[${i + 1}/${files.length}] ${msg}`),
+          );
+          setResults((prev) =>
+            prev.map((r, j) => (j === i ? { ...r, status: "done", url, name: outputName } : r)),
+          );
+        } catch (fileErr: unknown) {
+          const msg = fileErr instanceof Error ? fileErr.message : "Erro ao processar áudio.";
+          setResults((prev) =>
+            prev.map((r, j) => (j === i ? { ...r, status: "error", error: msg } : r)),
+          );
+        }
       }
 
       setProgressText("Concluído!");

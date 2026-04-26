@@ -26,6 +26,71 @@ import {
 
 type Mode = "basic" | "normal" | "aggressive";
 
+async function camouflageVideoFile(
+  file: File,
+  _cover: File | null,
+  mode: Mode,
+): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const video = document.createElement("video");
+    video.muted = true;
+    video.playsInline = true;
+    video.preload = "auto";
+    const objUrl = URL.createObjectURL(file);
+    video.src = objUrl;
+
+    video.onloadedmetadata = () => {
+      const w = video.videoWidth;
+      const h = video.videoHeight;
+      const canvas = document.createElement("canvas");
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext("2d")!;
+
+      const noise = mode === "basic" ? 3 : mode === "normal" ? 6 : 12;
+      const stream = canvas.captureStream(30);
+      const recorder = new MediaRecorder(stream, {
+        mimeType: MediaRecorder.isTypeSupported("video/webm;codecs=vp9")
+          ? "video/webm;codecs=vp9"
+          : "video/webm",
+        videoBitsPerSecond: 2_500_000,
+      });
+
+      const chunks: Blob[] = [];
+      recorder.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
+      recorder.onstop = () => {
+        URL.revokeObjectURL(objUrl);
+        const blob = new Blob(chunks, { type: "video/webm" });
+        resolve(URL.createObjectURL(blob));
+      };
+      recorder.onerror = () => { URL.revokeObjectURL(objUrl); reject(new Error("Erro ao gravar vídeo.")); };
+
+      recorder.start();
+      video.play();
+
+      function drawFrame() {
+        if (video.paused || video.ended) {
+          recorder.stop();
+          return;
+        }
+        ctx.drawImage(video, 0, 0, w, h);
+        const frame = ctx.getImageData(0, 0, w, h);
+        const d = frame.data;
+        for (let i = 0; i < d.length; i += 4) {
+          d[i]     = Math.max(0, Math.min(255, d[i]     + (Math.random() * noise * 2 - noise) | 0));
+          d[i + 1] = Math.max(0, Math.min(255, d[i + 1] + (Math.random() * noise * 2 - noise) | 0));
+          d[i + 2] = Math.max(0, Math.min(255, d[i + 2] + (Math.random() * noise * 2 - noise) | 0));
+        }
+        ctx.putImageData(frame, 0, 0);
+        requestAnimationFrame(drawFrame);
+      }
+      requestAnimationFrame(drawFrame);
+    };
+
+    video.onerror = () => { URL.revokeObjectURL(objUrl); reject(new Error("Erro ao carregar vídeo.")); };
+  });
+}
+
 interface FileResult {
   name: string;
   status: "queued" | "processing" | "done" | "error";
@@ -120,8 +185,8 @@ export default function CamuflarVideo() {
         body: { count: videos.length, type: "video" },
       });
 
-      if (error || data?.error) {
-        toast.error(data?.error || error?.message || "Erro ao validar plano.");
+      if (error || !data?.allowed) {
+        toast.error(data?.reason || error?.message || "Erro ao validar plano.");
         setProcessing(false);
         setProgressText("");
         setProgressValue(0);
@@ -135,8 +200,6 @@ export default function CamuflarVideo() {
       setProgressValue(20);
       toast.info("Processamento de vídeo iniciado!");
 
-      // TODO: integrar WebCodecs aqui
-      // Por enquanto simula fila
       for (let i = 0; i < videos.length; i++) {
         setResults((prev) =>
           prev.map((r, j) => (j === i ? { ...r, status: "processing" } : r)),
@@ -144,11 +207,18 @@ export default function CamuflarVideo() {
         setProgressText(`Processando ${i + 1}/${videos.length}: ${videos[i].name}`);
         setProgressValue(20 + Math.round(((i + 1) / videos.length) * 70));
 
-        await new Promise((r) => setTimeout(r, 800));
-
-        setResults((prev) =>
-          prev.map((r, j) => (j === i ? { ...r, status: "done" } : r)),
-        );
+        try {
+          const url = await camouflageVideoFile(videos[i], cover, mode);
+          const outName = videos[i].name.replace(/\.[^.]+$/, "") + "_camuflado.mp4";
+          setResults((prev) =>
+            prev.map((r, j) => (j === i ? { ...r, status: "done", url, name: outName } : r)),
+          );
+        } catch (fileErr: unknown) {
+          const msg = fileErr instanceof Error ? fileErr.message : "Erro desconhecido";
+          setResults((prev) =>
+            prev.map((r, j) => (j === i ? { ...r, status: "error", error: msg } : r)),
+          );
+        }
       }
 
       setProgressText("Concluído!");

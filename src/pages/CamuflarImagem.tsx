@@ -92,9 +92,9 @@ export default function CamuflarImagem() {
           body: { count: creativeFiles.length, type: "photo" },
         });
 
-      if (valError || !validation?.ok) {
+      if (valError || !validation?.allowed) {
         toast.error(
-          validation?.message || "Erro ao validar plano. Tente novamente.",
+          validation?.reason || "Erro ao validar plano. Tente novamente.",
         );
         setProcessing(false);
         return;
