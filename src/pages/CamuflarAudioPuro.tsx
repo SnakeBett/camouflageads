@@ -88,28 +88,11 @@ export default function CamuflarAudioPuro() {
     if (files.length === 0) { toast.error("Adicione pelo menos um arquivo."); return; }
 
     setProcessing(true);
-    setProgressText("Validando plano...");
+    setProgressText("Iniciando processamento...");
     setProgressValue(5);
     setResults([]);
 
     try {
-      try {
-        const { data } = await supabase.functions.invoke("validate-plan", {
-          body: { count: files.length, type: "audio_pure" },
-        });
-        if (data && data.allowed === false) {
-          toast.error(data.reason === "no_plan"
-            ? "Você ainda não tem um plano ativo. Vá em Planos para assinar."
-            : data.reason || "Limite de créditos atingido.");
-          setProcessing(false);
-          setProgressText("");
-          setProgressValue(0);
-          return;
-        }
-      } catch {
-        // Edge Function não disponível — prossegue
-      }
-
       const initial: FileResult[] = files.map((f) => ({ name: f.name, status: "queued" }));
       setResults(initial);
 

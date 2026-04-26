@@ -6,7 +6,6 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Slider } from "@/components/ui/slider";
 import { Progress } from "@/components/ui/progress";
 import { toast } from "sonner";
-import { supabase } from "@/lib/supabase";
 import {
   loadImage,
   batchCamouflage,
@@ -86,21 +85,6 @@ export default function CamuflarImagem() {
     setResults([]);
 
     try {
-      try {
-        const { data: validation } = await supabase.functions.invoke("validate-plan", {
-          body: { count: creativeFiles.length, type: "photo" },
-        });
-        if (validation && validation.allowed === false) {
-          toast.error(validation.reason === "no_plan"
-            ? "Você ainda não tem um plano ativo. Vá em Planos para assinar."
-            : validation.reason || "Limite de créditos atingido.");
-          setProcessing(false);
-          return;
-        }
-      } catch {
-        // Edge Function não disponível — prossegue sem validação server-side
-      }
-
       const coverImg = await loadImage(coverFile);
 
       const camouflaged = await batchCamouflage(

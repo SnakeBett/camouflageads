@@ -27,20 +27,6 @@ export default function CamuflarTexto() {
     if (!input.trim()) { toast.error("Digite um texto."); return; }
     setProcessing(true);
     try {
-      try {
-        const { data } = await supabase.functions.invoke("validate-plan", {
-          body: { count: 1, type: "text" },
-        });
-        if (data && data.allowed === false) {
-          toast.error(data.reason === "no_plan"
-            ? "Você ainda não tem um plano ativo. Vá em Planos para assinar."
-            : data.reason || "Limite de créditos atingido.");
-          return;
-        }
-      } catch {
-        // Edge Function não disponível — prossegue
-      }
-
       const words = input.split(/\s+/);
       const synonymMap: Record<string, string[]> = {
         "o": ["este", "o"], "a": ["esta", "a"], "de": ["sobre", "de"],

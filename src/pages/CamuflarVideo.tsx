@@ -177,28 +177,11 @@ export default function CamuflarVideo() {
     if (videos.length === 0) { toast.error("Adicione pelo menos um vídeo."); return; }
 
     setProcessing(true);
-    setProgressText("Validando plano...");
+    setProgressText("Iniciando processamento...");
     setProgressValue(5);
     setResults([]);
 
     try {
-      try {
-        const { data } = await supabase.functions.invoke("validate-plan", {
-          body: { count: videos.length, type: "video" },
-        });
-        if (data && data.allowed === false) {
-          toast.error(data.reason === "no_plan"
-            ? "Você ainda não tem um plano ativo. Vá em Planos para assinar."
-            : data.reason || "Limite de créditos atingido.");
-          setProcessing(false);
-          setProgressText("");
-          setProgressValue(0);
-          return;
-        }
-      } catch {
-        // Edge Function não disponível — prossegue
-      }
-
       const initial: FileResult[] = videos.map((f) => ({ name: f.name, status: "queued" }));
       setResults(initial);
 
