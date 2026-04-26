@@ -16,20 +16,22 @@ export default function Login() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
+    try {
+      const { error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
 
-    const { error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
+      if (error) {
+        toast.error(error.message);
+        return;
+      }
 
-    if (error) {
-      toast.error(error.message);
+      toast.success("Login realizado com sucesso!");
+      navigate("/dashboard", { replace: true });
+    } finally {
       setLoading(false);
-      return;
     }
-
-    toast.success("Login realizado com sucesso!");
-    navigate("/dashboard");
   }
 
   return (

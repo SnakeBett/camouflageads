@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, type ReactNode } from "react";
+import React, { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from "react";
 import { supabase } from "@/lib/supabase";
 import type { Session, User } from "@supabase/supabase-js";
 
@@ -39,12 +39,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [isAdmin, setIsAdmin] = useState(false);
   const [loading, setLoading] = useState(true);
 
-  const fetchProfile = async (userId: string) => {
-    const { data: p } = await supabase.from("profiles").select("*").eq("user_id", userId).single();
-    setProfile(p);
-    const { data: r } = await supabase.from("user_roles").select("role").eq("user_id", userId).eq("role", "admin").maybeSingle();
+  const fetchProfile = useCallback(async (userId: string) => {
+    const { data: p, error: pErr } = await supabase
+      .from("profiles")
+      .select("*")
+      .eq("user_id", userId)
+      .single();
+    if (pErr) console.error("profiles:", pErr.message);
+    setProfile(p ?? null);
+    const { data: r, error: rErr } = await supabase
+      .from("user_roles")
+      .select("role")
+      .eq("user_id", userId)
+      .eq("role", "admin")
+      .maybeSingle();
+    if (rErr) console.error("user_roles:", rErr.message);
     setIsAdmin(!!r);
-  };
+  }, []);
 
   const refreshProfile = async () => {
     if (user) await fetchProfile(user.id);
@@ -59,21 +70,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   useEffect(() => {
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, s) => {
-      setSession(s);
-      setUser(s?.user ?? null);
-      if (s?.user) await fetchProfile(s.user.id);
-      else { setProfile(null); setIsAdmin(false); }
-      setLoading(false);
-    });
-    supabase.auth.getSession().then(({ data: { session: s } }) => {
-      setSession(s);
-      setUser(s?.user ?? null);
-      if (s?.user) fetchProfile(s.user.id);
-      setLoading(false);
-    });
+    // Só onAuthStateChange: emite INITIAL_SESSION com a sessão atual (evita corrida com getSession).
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      async (_event, s) => {
+        setSession(s);
+        setUser(s?.user ?? null);
+        try {
+          if (s?.user) await fetchProfile(s.user.id);
+          else {
+            setProfile(null);
+            setIsAdmin(false);
+          }
+        } catch (e) {
+          console.error("AuthProvider: fetchProfile", e);
+        } finally {
+          setLoading(false);
+        }
+      },
+    );
     return () => subscription.unsubscribe();
-  }, []);
+  }, [fetchProfile]);
 
   return (
     <AuthContext.Provider value={{ session, user, profile, isAdmin, loading, refreshProfile, signOut }}>
