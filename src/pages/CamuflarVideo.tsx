@@ -1,9 +1,8 @@
 import { useState, useRef, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { useAuth } from "@/hooks/AuthProvider";
-import { supabase } from "@/lib/supabase";
 import { getRemainingCredits } from "@/utils/plan-utils";
+import { camouflageVideoFile } from "@/utils/video-browser-record";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
@@ -25,71 +24,6 @@ import {
 } from "lucide-react";
 
 type Mode = "basic" | "normal" | "aggressive";
-
-async function camouflageVideoFile(
-  file: File,
-  _cover: File | null,
-  mode: Mode,
-): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const video = document.createElement("video");
-    video.muted = true;
-    video.playsInline = true;
-    video.preload = "auto";
-    const objUrl = URL.createObjectURL(file);
-    video.src = objUrl;
-
-    video.onloadedmetadata = () => {
-      const w = video.videoWidth;
-      const h = video.videoHeight;
-      const canvas = document.createElement("canvas");
-      canvas.width = w;
-      canvas.height = h;
-      const ctx = canvas.getContext("2d")!;
-
-      const noise = mode === "basic" ? 3 : mode === "normal" ? 6 : 12;
-      const stream = canvas.captureStream(30);
-      const recorder = new MediaRecorder(stream, {
-        mimeType: MediaRecorder.isTypeSupported("video/webm;codecs=vp9")
-          ? "video/webm;codecs=vp9"
-          : "video/webm",
-        videoBitsPerSecond: 2_500_000,
-      });
-
-      const chunks: Blob[] = [];
-      recorder.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
-      recorder.onstop = () => {
-        URL.revokeObjectURL(objUrl);
-        const blob = new Blob(chunks, { type: "video/webm" });
-        resolve(URL.createObjectURL(blob));
-      };
-      recorder.onerror = () => { URL.revokeObjectURL(objUrl); reject(new Error("Erro ao gravar vídeo.")); };
-
-      recorder.start();
-      video.play();
-
-      function drawFrame() {
-        if (video.paused || video.ended) {
-          recorder.stop();
-          return;
-        }
-        ctx.drawImage(video, 0, 0, w, h);
-        const frame = ctx.getImageData(0, 0, w, h);
-        const d = frame.data;
-        for (let i = 0; i < d.length; i += 4) {
-          d[i]     = Math.max(0, Math.min(255, d[i]     + (Math.random() * noise * 2 - noise) | 0));
-          d[i + 1] = Math.max(0, Math.min(255, d[i + 1] + (Math.random() * noise * 2 - noise) | 0));
-          d[i + 2] = Math.max(0, Math.min(255, d[i + 2] + (Math.random() * noise * 2 - noise) | 0));
-        }
-        ctx.putImageData(frame, 0, 0);
-        requestAnimationFrame(drawFrame);
-      }
-      requestAnimationFrame(drawFrame);
-    };
-
-    video.onerror = () => { URL.revokeObjectURL(objUrl); reject(new Error("Erro ao carregar vídeo.")); };
-  });
-}
 
 interface FileResult {
   name: string;
@@ -124,7 +58,6 @@ const MODES: { key: Mode; label: string; desc: string; color: string; icon: Reac
 
 export default function CamuflarVideo() {
   const { user, profile } = useAuth();
-  const navigate = useNavigate();
 
   const videoInputRef = useRef<HTMLInputElement>(null);
   const coverInputRef = useRef<HTMLInputElement>(null);
@@ -197,10 +130,9 @@ export default function CamuflarVideo() {
         setProgressValue(20 + Math.round(((i + 1) / videos.length) * 70));
 
         try {
-          const url = await camouflageVideoFile(videos[i], cover, mode);
-          const outName = videos[i].name.replace(/\.[^.]+$/, "") + "_camuflado.mp4";
+          const out = await camouflageVideoFile(videos[i], cover, mode);
           setResults((prev) =>
-            prev.map((r, j) => (j === i ? { ...r, status: "done", url, name: outName } : r)),
+            prev.map((r, j) => (j === i ? { ...r, status: "done", url: out.url, name: out.fileName } : r)),
           );
         } catch (fileErr: unknown) {
           const msg = fileErr instanceof Error ? fileErr.message : "Erro desconhecido";
@@ -227,7 +159,9 @@ export default function CamuflarVideo() {
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Camuflar Vídeo</h1>
           <p className="text-muted-foreground mt-1">
-            Envie seus vídeos e escolha o nível de camuflagem.
+            Envie seus vídeos, opcionalmente uma imagem de capa (misturada em cada quadro) e o modo de
+            camuflagem. O download é em <span className="text-foreground font-medium">WebM</span> (padrão dos
+            navegadores com MediaRecorder); use um conversor para MP4 se a plataforma exigir.
           </p>
           {remaining !== null && remaining !== Infinity && (
             <p className="text-sm text-muted-foreground mt-2">
@@ -414,7 +348,7 @@ export default function CamuflarVideo() {
                     <div className="flex items-center gap-2 shrink-0">
                       <span className="text-xs text-muted-foreground capitalize">{r.status}</span>
                       {r.status === "done" && r.url && (
-                        <a href={r.url} download>
+                        <a href={r.url} download={r.name}>
                           <Button size="sm" variant="outline" className="h-7 text-xs">
                             <Download className="h-3 w-3 mr-1" /> Baixar
                           </Button>
