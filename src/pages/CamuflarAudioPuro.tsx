@@ -64,7 +64,8 @@ export default function CamuflarAudioPuro() {
   const [results, setResults] = useState<FileResult[]>([]);
 
   useEffect(() => {
-    if (!user || !profile) return;
+    if (!user) return;
+    if (!profile) { setRemaining(null); return; }
     getRemainingCredits(user.id, profile.plan, "audio_pure", profile).then(setRemaining);
   }, [user, profile]);
 
@@ -145,23 +146,6 @@ export default function CamuflarAudioPuro() {
     } finally {
       setProcessing(false);
     }
-  }
-
-  if (!user) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-background px-4">
-        <Card className="w-full max-w-md border-border/40 text-center">
-          <CardContent className="py-12 space-y-4">
-            <Music className="h-12 w-12 mx-auto text-muted-foreground" />
-            <h2 className="text-xl font-semibold">Crie sua conta</h2>
-            <p className="text-sm text-muted-foreground">
-              Você precisa de uma conta para camuflar áudios.
-            </p>
-            <Button onClick={() => navigate("/cadastro")}>Criar conta</Button>
-          </CardContent>
-        </Card>
-      </div>
-    );
   }
 
   if (remaining === 0) {

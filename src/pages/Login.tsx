@@ -1,42 +1,30 @@
 import { useState } from "react";
-import { useNavigate, Link } from "react-router-dom";
+import { useNavigate, Navigate, Link } from "react-router-dom";
 import { toast } from "sonner";
 import { supabase } from "@/lib/supabase";
+import { useAuth } from "@/hooks/AuthProvider";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
-function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
-  return new Promise((resolve, reject) => {
-    const timeout = window.setTimeout(
-      () => reject(new Error("Login demorou demais. Verifique sua internet e tente novamente.")),
-      ms,
-    );
-    promise
-      .then(resolve)
-      .catch(reject)
-      .finally(() => window.clearTimeout(timeout));
-  });
-}
-
 export default function Login() {
   const navigate = useNavigate();
+  const { user, loading } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [loading, setLoading] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+
+  if (!loading && user) return <Navigate to="/dashboard" replace />;
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    setLoading(true);
+    setSubmitting(true);
     try {
-      const { error } = await withTimeout(
-        supabase.auth.signInWithPassword({
-          email: email.trim().toLowerCase(),
-          password,
-        }),
-        15000,
-      );
+      const { error } = await supabase.auth.signInWithPassword({
+        email: email.trim().toLowerCase(),
+        password,
+      });
 
       if (error) {
         toast.error(error.message);
@@ -46,9 +34,9 @@ export default function Login() {
       toast.success("Login realizado com sucesso!");
       navigate("/dashboard", { replace: true });
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Erro inesperado ao entrar.");
+      toast.error(err instanceof Error ? err.message : "Erro inesperado.");
     } finally {
-      setLoading(false);
+      setSubmitting(false);
     }
   }
 
@@ -73,6 +61,7 @@ export default function Login() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
+                autoComplete="email"
               />
             </div>
 
@@ -85,26 +74,22 @@ export default function Login() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
+                autoComplete="current-password"
               />
             </div>
 
-            <Button type="submit" className="w-full" disabled={loading}>
-              {loading ? "Entrando…" : "Entrar"}
+            <Button type="submit" className="w-full" disabled={submitting}>
+              {submitting ? "Entrando…" : "Entrar"}
             </Button>
           </form>
 
           <div className="mt-6 flex flex-col items-center gap-2 text-sm">
-            <Link
-              to="/reset-password"
-              className="text-muted-foreground hover:text-primary transition-colors"
-            >
+            <Link to="/reset-password" className="text-muted-foreground hover:text-primary transition-colors">
               Esqueceu sua senha?
             </Link>
             <p className="text-muted-foreground">
               Não tem conta?{" "}
-              <Link to="/cadastro" className="text-primary hover:underline">
-                Criar conta
-              </Link>
+              <Link to="/cadastro" className="text-primary hover:underline">Criar conta</Link>
             </p>
           </div>
         </CardContent>

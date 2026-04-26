@@ -50,10 +50,9 @@ export default function CamuflarImagem() {
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!user || !profile) return;
-    getRemainingCredits(user.id, profile.plan, "photo", profile).then(
-      setRemaining,
-    );
+    if (!user) return;
+    if (!profile) { setRemaining(null); return; }
+    getRemainingCredits(user.id, profile.plan, "photo", profile).then(setRemaining);
   }, [user, profile]);
 
   function handleCreativeSelect(e: React.ChangeEvent<HTMLInputElement>) {
@@ -72,7 +71,7 @@ export default function CamuflarImagem() {
   }
 
   async function handleCamouflage() {
-    if (!user || !profile) return;
+    if (!user) return;
     if (!coverFile) {
       toast.error("Selecione uma imagem de capa.");
       return;
@@ -113,39 +112,16 @@ export default function CamuflarImagem() {
       setResults(camouflaged);
       toast.success(`${camouflaged.length} imagem(ns) camuflada(s)!`);
 
-      const fresh = await getRemainingCredits(
-        user.id,
-        profile.plan,
-        "photo",
-        profile,
-      );
-      setRemaining(fresh);
+      if (profile) {
+        const fresh = await getRemainingCredits(user.id, profile.plan, "photo", profile);
+        setRemaining(fresh);
+      }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Erro desconhecido";
       toast.error(msg);
     } finally {
       setProcessing(false);
     }
-  }
-
-  if (!user) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-background px-4">
-        <Card className="w-full max-w-md border-border/40 text-center">
-          <CardContent className="pt-8 pb-8 space-y-4">
-            <Shield className="mx-auto h-12 w-12 text-primary" />
-            <h2 className="text-xl font-semibold">Crie sua conta</h2>
-            <p className="text-sm text-muted-foreground">
-              Cadastre-se para começar a camuflar suas imagens e burlar a IA do
-              Facebook.
-            </p>
-            <Button className="w-full" onClick={() => navigate("/cadastro")}>
-              Criar conta grátis
-            </Button>
-          </CardContent>
-        </Card>
-      </div>
-    );
   }
 
   if (remaining === 0) {

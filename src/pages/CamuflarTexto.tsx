@@ -23,21 +23,6 @@ export default function CamuflarTexto() {
     }
   }, [user, profile, isAdmin]);
 
-  if (!user) {
-    return (
-      <div className="flex min-h-[60vh] items-center justify-center">
-        <Card className="w-full max-w-md bg-card border-border text-center">
-          <CardContent className="p-10 space-y-4">
-            <MessageSquare className="h-12 w-12 mx-auto text-muted-foreground" />
-            <h2 className="text-2xl font-bold text-foreground">Crie sua conta para continuar</h2>
-            <p className="text-muted-foreground">Cadastre-se para usar o Chat Bot.IA.</p>
-            <Button size="lg" className="w-full" onClick={() => navigate("/cadastro")}>Criar conta</Button>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
-
   if (remaining === 0) {
     return (
       <div className="flex min-h-[60vh] items-center justify-center">

@@ -1,8 +1,8 @@
-import React, { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from "react";
+import React, { createContext, useContext, useState, useEffect, useRef, useCallback, type ReactNode } from "react";
 import { supabase } from "@/lib/supabase";
 import type { Session, User } from "@supabase/supabase-js";
 
-interface Profile {
+export interface Profile {
   id: string;
   user_id: string;
   name: string;
@@ -27,21 +27,16 @@ interface AuthContextType {
 }
 
 const AuthContext = createContext<AuthContextType>({
-  session: null, user: null, profile: null, isAdmin: false, loading: true,
-  refreshProfile: async () => {}, signOut: async () => {},
+  session: null,
+  user: null,
+  profile: null,
+  isAdmin: false,
+  loading: true,
+  refreshProfile: async () => {},
+  signOut: async () => {},
 });
 
 export const useAuth = () => useContext(AuthContext);
-
-function withTimeout<T>(promise: PromiseLike<T>, ms: number, label: string): Promise<T> {
-  return new Promise((resolve, reject) => {
-    const timeout = window.setTimeout(() => reject(new Error(`${label} demorou demais.`)), ms);
-    Promise.resolve(promise)
-      .then(resolve)
-      .catch(reject)
-      .finally(() => window.clearTimeout(timeout));
-  });
-}
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
@@ -49,92 +44,69 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
   const [loading, setLoading] = useState(true);
+  const initialized = useRef(false);
 
   const fetchProfile = useCallback(async (userId: string) => {
-    const { data: p, error: pErr } = await withTimeout(
-      supabase
-        .from("profiles")
-        .select("*")
-        .eq("user_id", userId)
-        .single(),
-      8000,
-      "Carregamento do perfil",
-    );
-    if (pErr) console.error("profiles:", pErr.message);
-    setProfile(p ?? null);
-    const { data: r, error: rErr } = await withTimeout(
-      supabase
-        .from("user_roles")
-        .select("role")
-        .eq("user_id", userId)
-        .eq("role", "admin")
-        .maybeSingle(),
-      8000,
-      "Carregamento de permissões",
-    );
-    if (rErr) console.error("user_roles:", rErr.message);
-    setIsAdmin(!!r);
-  }, []);
-
-  const checkBan = useCallback(async (): Promise<boolean> => {
     try {
-      const { data } = await withTimeout(
-        supabase.functions.invoke("check-ban"),
-        5000,
-        "Verificação de bloqueio",
-      );
-      if (data?.banned) {
-        await supabase.auth.signOut();
-        setSession(null);
-        setUser(null);
-        setProfile(null);
-        setIsAdmin(false);
-        return true;
-      }
+      const [profileRes, roleRes] = await Promise.all([
+        supabase.from("profiles").select("*").eq("user_id", userId).single(),
+        supabase.from("user_roles").select("role").eq("user_id", userId).eq("role", "admin").maybeSingle(),
+      ]);
+      setProfile(profileRes.data ?? null);
+      setIsAdmin(!!roleRes.data);
     } catch (e) {
-      console.error("AuthProvider: check-ban", e);
+      console.error("fetchProfile:", e);
+      setProfile(null);
+      setIsAdmin(false);
     }
-    return false;
   }, []);
 
-  const refreshProfile = async () => {
-    if (user) await fetchProfile(user.id);
-  };
-
-  const signOut = async () => {
+  const signOut = useCallback(async () => {
     await supabase.auth.signOut();
     setSession(null);
     setUser(null);
     setProfile(null);
     setIsAdmin(false);
-  };
+  }, []);
+
+  const refreshProfile = useCallback(async () => {
+    if (user) await fetchProfile(user.id);
+  }, [user, fetchProfile]);
 
   useEffect(() => {
-    // Só onAuthStateChange: emite INITIAL_SESSION com a sessão atual (evita corrida com getSession).
+    supabase.auth.getSession().then(({ data: { session: s } }) => {
+      setSession(s);
+      setUser(s?.user ?? null);
+
+      if (s?.user) {
+        fetchProfile(s.user.id).finally(() => {
+          initialized.current = true;
+          setLoading(false);
+        });
+      } else {
+        initialized.current = true;
+        setLoading(false);
+      }
+    });
+
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       (_event, s) => {
         setSession(s);
         setUser(s?.user ?? null);
-        setLoading(false);
 
-        if (!s?.user) {
-          setProfile(null);
-          setIsAdmin(false);
-          return;
-        }
-
-        void (async () => {
-          try {
-            const banned = await checkBan();
-            if (!banned) await fetchProfile(s.user.id);
-          } catch (e) {
-            console.error("AuthProvider: carregar dados do usuário", e);
+        if (initialized.current) {
+          if (s?.user) {
+            fetchProfile(s.user.id);
+          } else {
+            setProfile(null);
+            setIsAdmin(false);
           }
-        })();
+        }
       },
     );
+
     return () => subscription.unsubscribe();
-  }, [checkBan, fetchProfile]);
+  }, [fetchProfile]);
 
   return (
     <AuthContext.Provider value={{ session, user, profile, isAdmin, loading, refreshProfile, signOut }}>
