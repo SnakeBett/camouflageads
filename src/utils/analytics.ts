@@ -16,11 +16,7 @@ export async function logAnalyticsEvent(
   metadata?: Record<string, any>,
 ) {
   try {
-    await fetch("/~api/analytics", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ event: eventName, source, ...metadata }),
-    });
+    await logPageEvent(source, { event: eventName, ...(metadata || {}) });
   } catch {}
 }
 

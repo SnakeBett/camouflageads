@@ -19,34 +19,36 @@ export default function Cadastro() {
     e.preventDefault();
     setLoading(true);
 
-    const { data, error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        data: { name, phone },
-      },
-    });
+    try {
+      const { data, error } = await supabase.auth.signUp({
+        email: email.trim().toLowerCase(),
+        password,
+        options: {
+          data: { name, phone },
+        },
+      });
 
-    if (error) {
-      toast.error(error.message);
+      if (error) {
+        toast.error(error.message);
+        return;
+      }
+
+      if (data.user?.identities?.length === 0) {
+        toast.error("Este e-mail já está cadastrado.");
+        return;
+      }
+
+      if (data.session) {
+        toast.success("Conta criada com sucesso!");
+        navigate("/dashboard", { replace: true });
+      } else {
+        toast.success("Verifique seu e-mail para confirmar a conta.");
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Erro inesperado ao criar conta.");
+    } finally {
       setLoading(false);
-      return;
     }
-
-    if (data.user?.identities?.length === 0) {
-      toast.error("Este e-mail já está cadastrado.");
-      setLoading(false);
-      return;
-    }
-
-    if (data.session) {
-      toast.success("Conta criada com sucesso!");
-      navigate("/dashboard");
-    } else {
-      toast.success("Verifique seu e-mail para confirmar a conta.");
-    }
-
-    setLoading(false);
   }
 
   return (

@@ -7,6 +7,19 @@ import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timeout = window.setTimeout(
+      () => reject(new Error("Login demorou demais. Verifique sua internet e tente novamente.")),
+      ms,
+    );
+    promise
+      .then(resolve)
+      .catch(reject)
+      .finally(() => window.clearTimeout(timeout));
+  });
+}
+
 export default function Login() {
   const navigate = useNavigate();
   const [email, setEmail] = useState("");
@@ -17,10 +30,13 @@ export default function Login() {
     e.preventDefault();
     setLoading(true);
     try {
-      const { error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
+      const { error } = await withTimeout(
+        supabase.auth.signInWithPassword({
+          email: email.trim().toLowerCase(),
+          password,
+        }),
+        15000,
+      );
 
       if (error) {
         toast.error(error.message);
@@ -29,6 +45,8 @@ export default function Login() {
 
       toast.success("Login realizado com sucesso!");
       navigate("/dashboard", { replace: true });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Erro inesperado ao entrar.");
     } finally {
       setLoading(false);
     }
