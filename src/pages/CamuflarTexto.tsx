@@ -4,31 +4,44 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { toast } from "sonner";
 import { getRemainingCredits } from "@/utils/plan-utils";
-import { obfuscateTextForSearch, type ObfuscateIntensity } from "@/utils/text-obfuscate";
-import { MessageSquare, Send, Copy, Loader2, Sparkles } from "lucide-react";
+import { obfuscateCentralNrvText, type CentralNrvTextMode } from "@/utils/text-obfuscate";
+import { MessageSquare, Mail, Smartphone, LayoutTemplate, Copy, Loader2 } from "lucide-react";
 
-const INTENSITIES: { key: ObfuscateIntensity; label: string; desc: string }[] = [
+const MODES: {
+  mode: CentralNrvTextMode;
+  label: string;
+  short: string;
+  desc: string;
+  icon: typeof Mail;
+}[] = [
   {
-    key: "leve",
-    label: "Leve",
-    desc: "Só latim: alguns invisíveis entre letras — na tela igual ao que escreveste.",
+    mode: "email",
+    label: "E-mail",
+    short: "E-mail",
+    desc: "Carácter RLO (U+202E) + texto invertido — como no site original para leitores de e-mail.",
+    icon: Mail,
   },
   {
-    key: "medio",
-    label: "Médio",
-    desc: "Só latim: na maior parte dos pares de letras entra um carácter de largura zero.",
+    mode: "sms",
+    label: "SMS e Marcas",
+    short: "SMS e Marcas",
+    desc: "Letras substituídas por homoglifos cirílico/grego onde o snapshot mapeava; espaços removidos.",
+    icon: Smartphone,
   },
   {
-    key: "pesado",
-    label: "Pesado",
-    desc: "Só latim: invisível entre cada letra/número do mesmo bloco.",
-  },
-  {
-    key: "arquivo",
-    label: "Estilo arquivo",
-    desc: "Como em captures antigas: letras confundíveis (Unicode que *parece* latino) + ZWSP entre tudo — ex. “Teste 1” legível mas não pesquisável como texto cru.",
+    mode: "anuncios",
+    label: "Anúncios e Sites",
+    short: "Anúncios e Sites",
+    desc: "Mesma tabela que SMS, com ZWSP (U+200B) antes de cada carácter; espaços viram só o ZWSP.",
+    icon: LayoutTemplate,
   },
 ];
+
+function modeToastLabel(mode: CentralNrvTextMode): string {
+  if (mode === "email") return "Modo E-mail aplicado.";
+  if (mode === "sms") return "Modo SMS e Marcas aplicado.";
+  return "Modo Anúncios e Sites aplicado.";
+}
 
 export default function CamuflarTexto() {
   const { user, profile, isAdmin } = useAuth();
@@ -36,8 +49,7 @@ export default function CamuflarTexto() {
   const [output, setOutput] = useState("");
   const [processing, setProcessing] = useState(false);
   const [remaining, setRemaining] = useState<number | null>(null);
-  const [intensity, setIntensity] = useState<ObfuscateIntensity>("medio");
-  const [lastUsedIntensity, setLastUsedIntensity] = useState<ObfuscateIntensity | null>(null);
+  const [lastMode, setLastMode] = useState<CentralNrvTextMode | null>(null);
 
   useEffect(() => {
     if (user && profile) {
@@ -46,7 +58,7 @@ export default function CamuflarTexto() {
     }
   }, [user, profile, isAdmin]);
 
-  const handleProcess = async () => {
+  const runObfuscate = async (mode: CentralNrvTextMode) => {
     if (!input.trim()) {
       toast.error("Digite um texto.");
       return;
@@ -54,14 +66,10 @@ export default function CamuflarTexto() {
     setProcessing(true);
     try {
       await new Promise((r) => setTimeout(r, 80));
-      const camouflaged = obfuscateTextForSearch(input, intensity);
+      const camouflaged = obfuscateCentralNrvText(input, mode);
       setOutput(camouflaged);
-      setLastUsedIntensity(intensity);
-      toast.success(
-        intensity === "arquivo"
-          ? "Texto no estilo arquivo — confundíveis + ZWSP (como em exemplos de captura)."
-          : "Texto ofuscado — mesmas letras latinas, com invisíveis entre elas.",
-      );
+      setLastMode(mode);
+      toast.success(modeToastLabel(mode));
 
       if (user && profile) {
         const r = await getRemainingCredits(user.id, profile.plan, "text", profile);
@@ -74,6 +82,8 @@ export default function CamuflarTexto() {
     }
   };
 
+  const lastModeLabel = lastMode ? MODES.find((m) => m.mode === lastMode)?.short : null;
+
   return (
     <div className="max-w-3xl mx-auto">
       <div className="flex items-center gap-3 mb-8">
@@ -83,10 +93,9 @@ export default function CamuflarTexto() {
         <div className="flex-1">
           <h1 className="text-2xl sm:text-3xl font-extrabold text-foreground">Chat Bot.IA</h1>
           <p className="text-muted-foreground text-sm mt-1">
-            <strong className="text-foreground">Leve / Médio / Pesado:</strong> mesmas letras latinas + invisíveis entre elas.
-            <strong className="text-foreground"> Estilo arquivo:</strong> padrão tipo Wayback — glifos confundíveis
-            (ex. Т, е, ѕ no lugar de T, e, s) e ZWSP entre caracteres; lê-se igual, mas não é o mesmo texto que
-            digitas no Google.
+            Três modos fixos, iguais ao script da captura Wayback de{" "}
+            <span className="text-foreground font-medium">central-nrv.com</span> (2022): escolhe o objetivo e gera o
+            texto para copiar.
           </p>
         </div>
         {remaining !== null && remaining !== Infinity && (
@@ -99,28 +108,6 @@ export default function CamuflarTexto() {
 
       <Card className="border-border mb-6">
         <CardContent className="p-6 space-y-4">
-          <label className="text-sm font-medium text-foreground">Intensidade</label>
-          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-            {INTENSITIES.map(({ key, label, desc }) => (
-              <button
-                key={key}
-                type="button"
-                onClick={() => setIntensity(key)}
-                className={`rounded-lg border-2 p-3 text-left text-sm transition-colors ${
-                  intensity === key
-                    ? "border-primary bg-primary/10 text-foreground"
-                    : "border-border/60 text-muted-foreground hover:border-muted-foreground/40"
-                }`}
-              >
-                <span className="font-semibold flex items-center gap-1.5">
-                  <Sparkles className="h-3.5 w-3.5 shrink-0" />
-                  {label}
-                </span>
-                <span className="mt-1 block text-xs leading-snug opacity-90">{desc}</span>
-              </button>
-            ))}
-          </div>
-
           <label className="text-sm font-medium text-foreground">Texto original</label>
           <textarea
             value={input}
@@ -129,19 +116,35 @@ export default function CamuflarTexto() {
             placeholder='Ex.: "JULIO" ou um parágrafo de anúncio…'
             className="w-full rounded-lg border border-input bg-background px-4 py-3 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring resize-none"
           />
-          <Button onClick={handleProcess} disabled={processing} size="lg" className="w-full">
-            {processing ? (
-              <>
-                <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-                Processando…
-              </>
-            ) : (
-              <>
-                <Send className="mr-2 h-5 w-5" />
-                Ofuscar texto
-              </>
-            )}
-          </Button>
+
+          <label className="text-sm font-medium text-foreground">Objetivo (como no site original)</label>
+          <div className="grid gap-2 sm:grid-cols-1">
+            {MODES.map(({ mode, label, desc, icon: Icon }) => (
+              <div
+                key={mode}
+                className="rounded-lg border border-border/60 p-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between"
+              >
+                <div className="flex gap-3 min-w-0">
+                  <div className="shrink-0 p-2 rounded-md bg-primary/10 text-primary">
+                    <Icon className="h-4 w-4" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="font-semibold text-foreground text-sm">{label}</p>
+                    <p className="text-xs text-muted-foreground leading-snug mt-0.5">{desc}</p>
+                  </div>
+                </div>
+                <Button
+                  type="button"
+                  size="sm"
+                  disabled={processing}
+                  className="shrink-0 w-full sm:w-auto bg-[#61CE70] hover:bg-[#52b85f] text-white border-0"
+                  onClick={() => void runObfuscate(mode)}
+                >
+                  {processing ? <Loader2 className="h-4 w-4 animate-spin" /> : `Gerar — ${label}`}
+                </Button>
+              </div>
+            ))}
+          </div>
         </CardContent>
       </Card>
 
@@ -151,7 +154,7 @@ export default function CamuflarTexto() {
             <div className="flex items-center justify-between gap-2 flex-wrap">
               <label className="text-sm font-medium text-green-400">
                 Texto ofuscado
-                {lastUsedIntensity === "arquivo" ? " (estilo arquivo)" : " (latino + invisíveis)"}
+                {lastModeLabel ? ` (${lastModeLabel})` : ""}
               </label>
               <Button
                 variant="ghost"
@@ -166,17 +169,14 @@ export default function CamuflarTexto() {
               </Button>
             </div>
             <p className="text-xs text-muted-foreground">
-              {lastUsedIntensity === "arquivo" ? (
-                <>
-                  Neste modo os glifos podem ser Unicode confundível (cirílico/grego com o mesmo desenho que A–Z)
-                  mais ZWSP — é o truque de muitas bios / HTML arquivados; não é o mesmo ficheiro de bytes que
-                  “escrever no teclado”.
-                </>
-              ) : (
-                <>
-                  Só alfabeto latino (com acentos no bloco) e caracteres de largura zero entre letras — nada de
-                  cirílico nestes três modos.
-                </>
+              {lastMode === "email" && (
+                <>Começa com U+202E (override RTL) e o restante é o teu texto invertido por carácter.</>
+              )}
+              {lastMode === "sms" && (
+                <>Homoglifos só nas letras que o site mapeava; espaços foram removidos como no original.</>
+              )}
+              {lastMode === "anuncios" && (
+                <>Um ZWSP (U+200B) antes de cada carácter processado, mais a mesma substituição que em SMS.</>
               )}
             </p>
             <div className="rounded-lg border border-green-500/20 bg-green-500/5 p-4 text-sm text-foreground whitespace-pre-wrap break-all font-sans">
