@@ -11,17 +11,17 @@ const INTENSITIES: { key: ObfuscateIntensity; label: string; desc: string }[] = 
   {
     key: "leve",
     label: "Leve",
-    desc: "Parte das letras vira homóglifo — ainda parece o texto, mas já foge de busca literal.",
+    desc: "Alguns espaços invisíveis entre letras — texto igual na tela, busca exata já costuma falhar.",
   },
   {
     key: "medio",
     label: "Médio",
-    desc: "Quase todas as letras e números trocados; forte contra copiar/colar em busca exata.",
+    desc: "Na maior parte dos pares de letras entra um carácter de largura zero (ainda só alfabeto latino).",
   },
   {
     key: "pesado",
     label: "Pesado",
-    desc: "Tudo homóglifo + separadores invisíveis entre letras — máximo para não bater com o texto “normal”.",
+    desc: "Entre cada letra/número do mesmo bloco: sempre um invisível — máximo para fugir de match literal.",
   },
 ];
 
@@ -50,7 +50,7 @@ export default function CamuflarTexto() {
       await new Promise((r) => setTimeout(r, 80));
       const camouflaged = obfuscateTextForSearch(input, intensity);
       setOutput(camouflaged);
-      toast.success("Texto ofuscado — visualmente parecido, Unicode diferente.");
+      toast.success("Texto ofuscado — mesmas letras, com invisíveis entre elas.");
 
       if (user && profile) {
         const r = await getRemainingCredits(user.id, profile.plan, "text", profile);
@@ -72,8 +72,8 @@ export default function CamuflarTexto() {
         <div className="flex-1">
           <h1 className="text-2xl sm:text-3xl font-extrabold text-foreground">Chat Bot.IA</h1>
           <p className="text-muted-foreground text-sm mt-1">
-            Troca letras por homóglifos Unicode (cirílico, grego, largura total) — parece igual, mas uma busca
-            exata pelo texto original em geral não encontra o trecho ofuscado.
+            Mantém o mesmo texto latino na tela; só acrescenta caracteres Unicode invisíveis entre letras.
+            Quem pesquisar o que digitou no teclado em geral não acha o trecho copiado daqui.
           </p>
         </div>
         {remaining !== null && remaining !== Infinity && (
@@ -136,7 +136,7 @@ export default function CamuflarTexto() {
         <Card className="border-green-500/30">
           <CardContent className="p-6 space-y-4">
             <div className="flex items-center justify-between gap-2 flex-wrap">
-              <label className="text-sm font-medium text-green-400">Texto ofuscado (Unicode)</label>
+              <label className="text-sm font-medium text-green-400">Texto ofuscado (latino + invisíveis)</label>
               <Button
                 variant="ghost"
                 size="sm"
@@ -150,8 +150,8 @@ export default function CamuflarTexto() {
               </Button>
             </div>
             <p className="text-xs text-muted-foreground">
-              Cole onde precisar (bio, criativo, legenda). Em buscas, o motor indexa estes caracteres — não o
-              mesmo que digitar &quot;JULIO&quot; no teclado latino comum.
+              Não há letras russas nem símbolos estranhos: só o seu alfabeto latino e espaços “de largura zero”
+              que não aparecem na visualização.
             </p>
             <div className="rounded-lg border border-green-500/20 bg-green-500/5 p-4 text-sm text-foreground whitespace-pre-wrap break-all font-sans">
               {output}
