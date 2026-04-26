@@ -21,9 +21,18 @@ import {
   Fingerprint,
   Cpu,
   Hash,
+  Layers,
 } from "lucide-react";
 
 const MAX_CREATIVES = 50;
+/** Níveis do slider usados ao gerar várias versões (do mais criativo ao mais capa). */
+const VARIANT_NOISE_LEVELS = [2, 5, 8, 11, 14] as const;
+const MAX_CREATIVES_FOR_VARIANTS = 10;
+
+function variantLabelFromFileName(fileName: string): string | null {
+  const m = fileName.match(/_n(\d+)_c(\d+)/);
+  return m ? `Intensidade ${m[1]} · ~${m[2]}% capa` : null;
+}
 
 const FEATURE_BADGES = [
   { icon: Shield, label: "Ultra Aggressive Mode" },
@@ -42,6 +51,7 @@ export default function CamuflarImagem() {
   const [coverFile, setCoverFile] = useState<File | null>(null);
   const [noiseLevel, setNoiseLevel] = useState(6);
   const [processing, setProcessing] = useState(false);
+  const [processingMode, setProcessingMode] = useState<"single" | "variants" | null>(null);
   const [progress, setProgress] = useState(0);
   const [results, setResults] = useState<CamouflageResult[]>([]);
   const [remaining, setRemaining] = useState<number | null>(null);
@@ -82,6 +92,7 @@ export default function CamuflarImagem() {
     }
 
     setProcessing(true);
+    setProcessingMode("single");
     setProgress(0);
 
     try {
@@ -106,6 +117,68 @@ export default function CamuflarImagem() {
       toast.error(msg);
     } finally {
       setProcessing(false);
+      setProcessingMode(null);
+    }
+  }
+
+  async function handleGenerateVariants() {
+    if (!user) return;
+    if (!coverFile) {
+      toast.error("Selecione uma imagem de capa.");
+      return;
+    }
+    if (creativeFiles.length === 0) {
+      toast.error("Selecione pelo menos um criativo.");
+      return;
+    }
+    if (creativeFiles.length > MAX_CREATIVES_FOR_VARIANTS) {
+      toast.error(
+        `Para gerar várias versões de uma vez, use no máximo ${MAX_CREATIVES_FOR_VARIANTS} criativos (ou use Camuflar Imagens por intensidade).`,
+      );
+      return;
+    }
+
+    setProcessing(true);
+    setProcessingMode("variants");
+    setProgress(0);
+
+    try {
+      const coverImg = await loadImage(coverFile);
+      let step = 0;
+      let totalAdded = 0;
+
+      for (const level of VARIANT_NOISE_LEVELS) {
+        const batch = await batchCamouflage(
+          coverImg,
+          creativeFiles,
+          (done, total) => {
+            const local = done / total;
+            const base = step / VARIANT_NOISE_LEVELS.length;
+            const slice = 1 / VARIANT_NOISE_LEVELS.length;
+            setProgress(Math.round((base + local * slice) * 100));
+          },
+          level,
+        );
+        totalAdded += batch.length;
+        setResults((prev) => [...prev, ...batch]);
+        step += 1;
+      }
+
+      toast.success(
+        `${totalAdded} versões adicionadas ao histórico (${VARIANT_NOISE_LEVELS.length} intensidades × ${creativeFiles.length} criativo(s)).`,
+      );
+
+      if (profile) {
+        const fresh = await getRemainingCredits(user.id, profile.plan, "photo", profile);
+        setRemaining(fresh);
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Erro desconhecido";
+      toast.error(msg);
+    } finally {
+      setProcessing(false);
+      setProcessingMode(null);
+      setProgress(0);
     }
   }
 
@@ -239,30 +312,58 @@ export default function CamuflarImagem() {
           </CardContent>
         </Card>
 
-        {/* Action button + progress */}
+        {/* Action buttons + progress */}
         <div className="space-y-4">
-          <Button
-            className="w-full h-12 text-base"
-            disabled={processing || creativeFiles.length === 0 || !coverFile}
-            onClick={handleCamouflage}
-          >
-            {processing ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Processando…
-              </>
-            ) : (
-              <>
-                <Shield className="mr-2 h-4 w-4" />
-                Camuflar Imagens
-              </>
-            )}
-          </Button>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Button
+              className="h-12 text-base"
+              disabled={processing || creativeFiles.length === 0 || !coverFile}
+              onClick={handleCamouflage}
+            >
+              {processing && processingMode === "single" ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Processando…
+                </>
+              ) : (
+                <>
+                  <Shield className="mr-2 h-4 w-4" />
+                  Camuflar Imagens
+                </>
+              )}
+            </Button>
+            <Button
+              type="button"
+              variant="secondary"
+              className="h-12 text-base border border-border"
+              disabled={processing || creativeFiles.length === 0 || !coverFile}
+              onClick={handleGenerateVariants}
+            >
+              {processing && processingMode === "variants" ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Gerando versões…
+                </>
+              ) : (
+                <>
+                  <Layers className="mr-2 h-4 w-4" />
+                  Gerar várias versões
+                </>
+              )}
+            </Button>
+          </div>
+          <p className="text-xs text-muted-foreground text-center -mt-1">
+            Várias versões usam as intensidades{" "}
+            <span className="text-foreground font-medium">{VARIANT_NOISE_LEVELS.join(", ")}</span> no slider e
+            empilham tudo em <strong className="text-foreground font-medium">Resultados</strong> (máx.{" "}
+            {MAX_CREATIVES_FOR_VARIANTS} criativos por vez).
+          </p>
 
           {processing && (
             <div className="space-y-1">
               <Progress value={progress} className="h-2" />
               <p className="text-center text-xs text-muted-foreground">
+                {processingMode === "variants" ? "Gerando preset de intensidades… " : ""}
                 {progress}% concluído
               </p>
             </div>
@@ -273,48 +374,61 @@ export default function CamuflarImagem() {
         {results.length > 0 && (
           <div className="space-y-4">
             <div className="flex flex-wrap items-center justify-between gap-3">
-              <h2 className="text-lg font-semibold">Resultados ({results.length})</h2>
+              <div>
+                <h2 className="text-lg font-semibold">Resultados ({results.length})</h2>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Histórico desta sessão — novas camuflagens ou versões aparecem abaixo.
+                </p>
+              </div>
               <Button type="button" variant="outline" size="sm" onClick={() => setResults([])}>
                 Limpar resultados
               </Button>
             </div>
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {results.map((r) => (
-                <Card key={r.fileName} className="border-border/40 overflow-hidden">
-                  <div className="relative group">
-                    <img
-                      src={r.camouflaged}
-                      alt={r.fileName}
-                      className="w-full aspect-square object-cover"
-                    />
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setPreviewUrl(
-                          previewUrl === r.camouflaged
-                            ? null
-                            : r.camouflaged,
-                        )
-                      }
-                      className="absolute inset-0 flex items-center justify-center bg-black/50 opacity-0 transition-opacity group-hover:opacity-100"
-                    >
-                      <Eye className="h-6 w-6 text-white" />
-                    </button>
-                  </div>
-                  <CardContent className="p-3">
-                    <a
-                      href={r.camouflaged}
-                      download={r.fileName}
-                      className="inline-flex w-full"
-                    >
-                      <Button variant="secondary" className="w-full" size="sm">
-                        <Download className="mr-2 h-4 w-4" />
-                        Baixar
-                      </Button>
-                    </a>
-                  </CardContent>
-                </Card>
-              ))}
+              {results.map((r) => {
+                const vLabel = variantLabelFromFileName(r.fileName);
+                return (
+                  <Card key={r.fileName} className="border-border/40 overflow-hidden">
+                    <div className="relative group">
+                      <img
+                        src={r.camouflaged}
+                        alt={r.fileName}
+                        className="w-full aspect-square object-cover"
+                      />
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setPreviewUrl(
+                            previewUrl === r.camouflaged
+                              ? null
+                              : r.camouflaged,
+                          )
+                        }
+                        className="absolute inset-0 flex items-center justify-center bg-black/50 opacity-0 transition-opacity group-hover:opacity-100"
+                      >
+                        <Eye className="h-6 w-6 text-white" />
+                      </button>
+                    </div>
+                    <CardContent className="p-3 space-y-2">
+                      {vLabel ? (
+                        <p className="text-[10px] text-muted-foreground text-center tabular-nums">
+                          {vLabel}
+                        </p>
+                      ) : null}
+                      <a
+                        href={r.camouflaged}
+                        download={r.fileName}
+                        className="inline-flex w-full"
+                      >
+                        <Button variant="secondary" className="w-full" size="sm">
+                          <Download className="mr-2 h-4 w-4" />
+                          Baixar
+                        </Button>
+                      </a>
+                    </CardContent>
+                  </Card>
+                );
+              })}
             </div>
           </div>
         )}
