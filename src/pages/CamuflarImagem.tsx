@@ -1,5 +1,4 @@
 import { useState, useRef, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/hooks/AuthProvider";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -33,7 +32,6 @@ const FEATURE_BADGES = [
 ] as const;
 
 export default function CamuflarImagem() {
-  const navigate = useNavigate();
   const { user, profile } = useAuth();
 
   const creativeInputRef = useRef<HTMLInputElement>(null);
@@ -56,6 +54,7 @@ export default function CamuflarImagem() {
 
   function handleCreativeSelect(e: React.ChangeEvent<HTMLInputElement>) {
     const files = Array.from(e.target.files || []);
+    e.target.value = "";
     if (files.length > MAX_CREATIVES) {
       toast.error(`Máximo de ${MAX_CREATIVES} imagens por vez.`);
       return;
@@ -66,6 +65,7 @@ export default function CamuflarImagem() {
 
   function handleCoverSelect(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0] ?? null;
+    e.target.value = "";
     setCoverFile(file);
   }
 
@@ -82,7 +82,6 @@ export default function CamuflarImagem() {
 
     setProcessing(true);
     setProgress(0);
-    setResults([]);
 
     try {
       const coverImg = await loadImage(coverFile);
@@ -95,8 +94,8 @@ export default function CamuflarImagem() {
         noiseLevel,
       );
 
-      setResults(camouflaged);
-      toast.success(`${camouflaged.length} imagem(ns) camuflada(s)!`);
+      setResults((prev) => [...prev, ...camouflaged]);
+      toast.success(`${camouflaged.length} imagem(ns) adicionada(s) aos resultados.`);
 
       if (profile) {
         const fresh = await getRemainingCredits(user.id, profile.plan, "photo", profile);
@@ -208,11 +207,18 @@ export default function CamuflarImagem() {
         {/* Noise slider */}
         <Card className="border-border/40">
           <CardContent className="pt-6 space-y-4">
-            <div className="flex items-center justify-between">
-              <h3 className="text-sm font-medium">Intensidade do Ruído</h3>
-              <span className="text-sm font-semibold text-primary">
+            <div className="flex items-center justify-between gap-2">
+              <h3 className="text-sm font-medium">Intensidade do ruído</h3>
+              <span className="text-sm font-semibold tabular-nums text-primary">
                 {noiseLevel}
+                <span className="ml-1.5 font-normal text-muted-foreground">
+                  {noiseLevel <= 4 ? "(suave)" : noiseLevel <= 9 ? "(moderado)" : "(agressivo)"}
+                </span>
               </span>
+            </div>
+            <div className="flex justify-between text-[10px] uppercase tracking-wide text-muted-foreground px-0.5">
+              <span>Suave</span>
+              <span>Agressivo</span>
             </div>
             <Slider
               min={1}
@@ -222,8 +228,8 @@ export default function CamuflarImagem() {
               onValueChange={([v]) => setNoiseLevel(v)}
             />
             <p className="text-xs text-muted-foreground">
-              Valores mais altos tornam a camuflagem mais agressiva. Recomendado:
-              5-8.
+              Afeta ruído por pixel, padrão anti-IA e contraste. A cada processamento usa o valor atual do
+              slider. Recomendado: 5–8 para equilíbrio.
             </p>
           </CardContent>
         </Card>
@@ -261,10 +267,15 @@ export default function CamuflarImagem() {
         {/* Results */}
         {results.length > 0 && (
           <div className="space-y-4">
-            <h2 className="text-lg font-semibold">Resultados</h2>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <h2 className="text-lg font-semibold">Resultados ({results.length})</h2>
+              <Button type="button" variant="outline" size="sm" onClick={() => setResults([])}>
+                Limpar resultados
+              </Button>
+            </div>
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {results.map((r, i) => (
-                <Card key={i} className="border-border/40 overflow-hidden">
+              {results.map((r) => (
+                <Card key={r.fileName} className="border-border/40 overflow-hidden">
                   <div className="relative group">
                     <img
                       src={r.camouflaged}

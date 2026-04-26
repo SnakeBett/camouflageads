@@ -39,16 +39,18 @@ function xorshift(state: PRNGState): number {
 // um offset diferente pra gerar um padrão único.
 // ============================================================
 
-function applyPixelRandomization(data: Uint8ClampedArray, seed: number): void {
+/** noiseLevel 1–15: quanto maior, maior a variação por pixel (o slider passa a ser perceptível). */
+function applyPixelRandomization(data: Uint8ClampedArray, seed: number, noiseLevel: number): void {
   const state: PRNGState = { s: seed + 12345 };
+  const maxOffset = Math.max(1, Math.min(28, Math.round(noiseLevel * 1.85)));
 
   for (let i = 0; i < data.length; i += 4) {
-    const offset = xorshift(state) % 5;
+    const offset = xorshift(state) % (maxOffset + 1);
     const sign = xorshift(state) % 2 === 0 ? 1 : -1;
 
-    data[i]     = Math.max(0, Math.min(255, data[i]     + offset * sign));        // R
-    data[i + 1] = Math.max(0, Math.min(255, data[i + 1] + (offset + 1) * -sign)); // G
-    data[i + 2] = Math.max(0, Math.min(255, data[i + 2] + offset * sign));        // B
+    data[i]     = Math.max(0, Math.min(255, data[i]     + offset * sign));
+    data[i + 1] = Math.max(0, Math.min(255, data[i + 1] + (offset + 1) * -sign));
+    data[i + 2] = Math.max(0, Math.min(255, data[i + 2] + offset * sign));
   }
 }
 
@@ -78,7 +80,8 @@ function applyAdversarialNoise(
     const checkerSign = (blockX + blockY) % 2 === 0 ? 1 : -1;
 
     const randomOffset = xorshift(state) % 3 - 1; // -1, 0, or 1
-    const noise = (intensity + randomOffset) * checkerSign;
+    const scaled = Math.max(1, intensity) * (0.65 + (intensity / 15) * 0.55);
+    const noise = (scaled + randomOffset) * checkerSign;
 
     data[i]     = Math.max(0, Math.min(255, data[i]     + noise)); // R
     data[i + 1] = Math.max(0, Math.min(255, data[i + 1] + noise)); // G
@@ -92,10 +95,12 @@ function applyAdversarialNoise(
 // Torna cada output visualmente único mantendo a aparência.
 // ============================================================
 
-function applyContrastShift(data: Uint8ClampedArray, seed: number): void {
+function applyContrastShift(data: Uint8ClampedArray, seed: number, noiseLevel: number): void {
   const state: PRNGState = { s: seed + 99999 };
-  const brightnessShift = xorshift(state) % 7 - 3;           // -3 a +3
-  const contrastFactor = 0.98 + (xorshift(state) % 40) / 1000; // 0.98 a ~1.02
+  const brRange = 2 + Math.floor(noiseLevel / 2.5);
+  const brightnessShift = xorshift(state) % (2 * brRange + 1) - brRange;
+  const contrastSpread = 20 + Math.floor(noiseLevel * 1.4);
+  const contrastFactor = 0.97 + (xorshift(state) % contrastSpread) / 1000;
 
   for (let i = 0; i < data.length; i += 4) {
     for (let ch = 0; ch < 3; ch++) {
@@ -202,9 +207,9 @@ export function camouflageImage(
 
   // ---- ETAPA 2-4: Aplicar perturbações com seed única ----
   const seed = randomSeed();
-  applyPixelRandomization(outputData.data, seed);
+  applyPixelRandomization(outputData.data, seed, noiseLevel);
   applyAdversarialNoise(outputData.data, seed, noiseLevel, width);
-  applyContrastShift(outputData.data, seed);
+  applyContrastShift(outputData.data, seed, noiseLevel);
 
   // Renderiza resultado
   ctx.putImageData(outputData, 0, 0);
@@ -218,7 +223,10 @@ export function camouflageImage(
   previewCtx.drawImage(creativeImage, 0, 0, width, height);
   const creativePreview = previewCanvas.toDataURL("image/png");
 
-  const fileName = `camouflage_${index + 1}_${Date.now()}.png`;
+  const unique = typeof crypto !== "undefined" && crypto.randomUUID
+    ? crypto.randomUUID().slice(0, 8)
+    : `${randomSeed().toString(36)}`;
+  const fileName = `camouflage_${index + 1}_n${noiseLevel}_${Date.now()}_${unique}.png`;
 
   return {
     camouflaged,
@@ -255,6 +263,9 @@ export async function batchCamouflage(
     const result = camouflageImage(coverImage, img, i, blendIntensity, noiseLevel);
     results.push(result);
     onProgress?.(i + 1, creativeFiles.length);
+    await new Promise<void>((resolve) => {
+      requestAnimationFrame(() => resolve());
+    });
   }
 
   return results;
