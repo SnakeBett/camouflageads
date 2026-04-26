@@ -19,7 +19,6 @@ BEGIN
       plan = 'infinito',
       plan_expiry = '2035-12-31T23:59:59+00:00'::timestamptz,
       bonus_credits = 999999,
-      banned = false,
       updated_at = now()
     WHERE user_id = uid;
 
