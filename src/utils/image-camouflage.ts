@@ -26,14 +26,21 @@ function randomSeed(): number {
 
 /**
  * Fração da imagem de CAPA no blend inicial (etapa 1).
- * Valores mais altos no slider = mais capa “aparente” no pixel antes do ruído anti-IA.
- * Curva calibrada para que o meio (~6–8) fique próximo do comportamento antigo (~90% capa).
+ * Slider baixo ≈ quase só criativo; slider alto ≈ muita capa.
+ * gamma &lt; 1: os primeiros passos do slider mudam bastante a mistura (mais “sensível” à esquerda).
  */
 function noiseLevelToCoverMix(noiseLevel: number): number {
   const n = Math.max(1, Math.min(15, noiseLevel));
   const u = (n - 1) / 14;
-  const coverMix = 0.55 + 0.42 * Math.pow(u, 0.38);
-  return Math.min(0.97, Math.max(0.32, coverMix));
+  const minCover = 0.08;
+  const maxCover = 0.96;
+  const gamma = 0.48;
+  return minCover + (maxCover - minCover) * Math.pow(u, gamma);
+}
+
+/** Mesma fórmula que o motor de camuflagem — para preview na UI (evita drift). */
+export function getCoverMixPreview(noiseLevel: number): number {
+  return noiseLevelToCoverMix(noiseLevel);
 }
 
 function xorshift(state: PRNGState): number {
@@ -54,7 +61,7 @@ function xorshift(state: PRNGState): number {
 /** noiseLevel 1–15: quanto maior, maior a variação por pixel (o slider passa a ser perceptível). */
 function applyPixelRandomization(data: Uint8ClampedArray, seed: number, noiseLevel: number): void {
   const state: PRNGState = { s: seed + 12345 };
-  const maxOffset = Math.max(1, Math.min(28, Math.round(noiseLevel * 1.85)));
+  const maxOffset = Math.max(2, Math.min(28, Math.round(noiseLevel * 1.85)));
 
   for (let i = 0; i < data.length; i += 4) {
     const offset = xorshift(state) % (maxOffset + 1);
@@ -109,9 +116,9 @@ function applyAdversarialNoise(
 
 function applyContrastShift(data: Uint8ClampedArray, seed: number, noiseLevel: number): void {
   const state: PRNGState = { s: seed + 99999 };
-  const brRange = 2 + Math.floor(noiseLevel / 2.5);
+  const brRange = Math.max(2, 2 + Math.floor(noiseLevel / 2.5));
   const brightnessShift = xorshift(state) % (2 * brRange + 1) - brRange;
-  const contrastSpread = 20 + Math.floor(noiseLevel * 1.4);
+  const contrastSpread = Math.max(22, 20 + Math.floor(noiseLevel * 1.4));
   const contrastFactor = 0.97 + (xorshift(state) % contrastSpread) / 1000;
 
   for (let i = 0; i < data.length; i += 4) {
@@ -218,7 +225,7 @@ export function camouflageImage(
   // ---- ETAPA 2-4: Aplicar perturbações com seed única ----
   const seed = randomSeed();
   applyPixelRandomization(outputData.data, seed, noiseLevel);
-  applyAdversarialNoise(outputData.data, seed, noiseLevel, width);
+  applyAdversarialNoise(outputData.data, seed, Math.max(2, noiseLevel), width);
   applyContrastShift(outputData.data, seed, noiseLevel);
 
   // Renderiza resultado

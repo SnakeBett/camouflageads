@@ -8,6 +8,7 @@ import { toast } from "sonner";
 import {
   loadImage,
   batchCamouflage,
+  getCoverMixPreview,
   type CamouflageResult,
 } from "@/utils/image-camouflage";
 import { getRemainingCredits } from "@/utils/plan-utils";
@@ -206,12 +207,15 @@ export default function CamuflarImagem() {
         {/* Noise slider */}
         <Card className="border-border/40">
           <CardContent className="pt-6 space-y-4">
-            <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center justify-between gap-2 flex-wrap">
               <h3 className="text-sm font-medium">Intensidade da camuflagem</h3>
-              <span className="text-sm font-semibold tabular-nums text-primary">
+              <span className="text-sm font-semibold tabular-nums text-primary text-right">
                 {noiseLevel}
                 <span className="ml-1.5 font-normal text-muted-foreground">
                   {noiseLevel <= 4 ? "(mais criativo)" : noiseLevel <= 9 ? "(equilíbrio)" : "(mais capa)"}
+                </span>
+                <span className="block sm:inline sm:ml-2 text-xs font-normal text-muted-foreground">
+                  ~{Math.round(getCoverMixPreview(noiseLevel) * 100)}% capa na mistura
                 </span>
               </span>
             </div>
@@ -227,9 +231,10 @@ export default function CamuflarImagem() {
               onValueChange={([v]) => setNoiseLevel(v)}
             />
             <p className="text-xs text-muted-foreground">
-              Controla quanto da <strong className="text-foreground font-medium">imagem de capa</strong> entra na
-              mistura com os criativos (valores maiores = capa mais aparente) e, ao mesmo tempo, a força do ruído
-              anti-IA nos pixels. Cada processamento usa o valor atual do slider.
+              À <strong className="text-foreground font-medium">esquerda</strong> o resultado fica quase só o
+              criativo (pouca capa no blend); à <strong className="text-foreground font-medium">direita</strong>, a
+              capa pesa muito mais — as primeiras posições do slider mudam bastante a imagem. O ruído anti-IA
+              nos pixels acompanha o mesmo valor. Cada processamento usa o slider atual.
             </p>
           </CardContent>
         </Card>
