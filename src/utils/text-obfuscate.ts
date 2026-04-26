@@ -1,19 +1,21 @@
 /**
- * Ofuscação “texto normal”: mantém as mesmas letras latinas (A–Z, acentos comuns, números)
- * e só insere caracteres de largura zero *entre* elas. Visualmente igual; uma busca literal
- * pelo texto digitado no teclado em geral não encontra o trecho copiado.
+ * Duas estratégias:
  *
- * Não usa cirílico nem outros alfabetos — só Latin + separadores Unicode invisíveis.
+ * 1) leve | medio | pesado — só alfabeto latino + acentos comuns; insere ZWSP/ZWNJ/WJ *entre*
+ *    letras (nada de cirílico).
+ *
+ * 2) arquivo — padrão típico de páginas arquivadas / “bio trick”: letras que *parecem* latinas mas são
+ *    outro codepoint (sobretudo cirílico confundível, ex. Т/e/s como T/e/s) + ZWSP entre caracteres,
+ *    como em “​Т​е​ѕ​t​е​ ​1”.
  */
 
-const ZWSP = "\u200B"; // zero-width space
-const ZWNJ = "\u200C"; // zero-width non-joiner
-const WJ = "\u2060"; // word joiner
+const ZWSP = "\u200B";
+const ZWNJ = "\u200C";
+const WJ = "\u2060";
 
-/** Letras latinas (ASCII + extensões A/B) e dígitos — um “bloco” onde se tecem invisíveis. */
 const LATIN_ALNUM_BLOCK = /^[A-Za-z0-9\u00C0-\u024F]+$/;
 
-export type ObfuscateIntensity = "leve" | "medio" | "pesado";
+export type ObfuscateIntensity = "leve" | "medio" | "pesado" | "arquivo";
 
 function pickInvisible(): string {
   const pool = [ZWSP, ZWNJ, WJ];
@@ -33,10 +35,64 @@ function weaveInvisiblesInRun(run: string, insertProb: number): string {
 }
 
 /**
- * @param text - texto original (letras latinas comuns + números nos blocos reconhecidos)
- * @param intensity - probabilidade de inserir um invisível entre cada par de caracteres dentro do mesmo bloco
+ * Cirílico / grego com o mesmo desenho que letras latinas comuns (não “alfabeto russo” à vista —
+ * são os mesmos glifos de fonte que o utilizador associa ao inglês/português).
+ * `t` minúsculo mantém-se latino: `т` cirílico parece “m” em muitas fontes.
+ */
+const ARCHIVE_CONFUSE: Record<string, string> = {
+  A: "\u0410",
+  B: "\u0412",
+  C: "\u0421",
+  E: "\u0415",
+  H: "\u041D",
+  I: "\u0406",
+  J: "\u0408",
+  K: "\u041A",
+  M: "\u041C",
+  N: "\u039D",
+  O: "\u041E",
+  P: "\u0420",
+  S: "\u0405",
+  T: "\u0422",
+  X: "\u0425",
+  a: "\u0430",
+  b: "\u0432",
+  c: "\u0441",
+  e: "\u0435",
+  h: "\u043D",
+  i: "\u0456",
+  j: "\u0458",
+  k: "\u043A",
+  m: "\u043C",
+  o: "\u043E",
+  p: "\u0440",
+  s: "\u0455",
+  x: "\u0445",
+};
+
+/** Estilo “​Т​е​ѕ​t​е​”: ZWSP antes do 1.º carácter e depois de cada um. */
+function obfuscateArchiveStyle(text: string): string {
+  let out = ZWSP;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i]!;
+    let emit = ch;
+    if (Object.prototype.hasOwnProperty.call(ARCHIVE_CONFUSE, ch) && Math.random() < 0.88) {
+      emit = ARCHIVE_CONFUSE[ch]!;
+    }
+    out += emit + ZWSP;
+  }
+  return out;
+}
+
+/**
+ * @param intensity - leve/médio/pesado: só latin + invisíveis entre letras do bloco.
+ *                    arquivo: confundíveis Unicode + ZWSP entre todos os caracteres (incl. espaços).
  */
 export function obfuscateTextForSearch(text: string, intensity: ObfuscateIntensity): string {
+  if (intensity === "arquivo") {
+    return obfuscateArchiveStyle(text);
+  }
+
   const insertProb =
     intensity === "leve" ? 0.38 : intensity === "medio" ? 0.82 : 1;
 

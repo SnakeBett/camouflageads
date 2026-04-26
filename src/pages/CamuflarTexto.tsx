@@ -11,17 +11,22 @@ const INTENSITIES: { key: ObfuscateIntensity; label: string; desc: string }[] = 
   {
     key: "leve",
     label: "Leve",
-    desc: "Alguns espaços invisíveis entre letras — texto igual na tela, busca exata já costuma falhar.",
+    desc: "Só latim: alguns invisíveis entre letras — na tela igual ao que escreveste.",
   },
   {
     key: "medio",
     label: "Médio",
-    desc: "Na maior parte dos pares de letras entra um carácter de largura zero (ainda só alfabeto latino).",
+    desc: "Só latim: na maior parte dos pares de letras entra um carácter de largura zero.",
   },
   {
     key: "pesado",
     label: "Pesado",
-    desc: "Entre cada letra/número do mesmo bloco: sempre um invisível — máximo para fugir de match literal.",
+    desc: "Só latim: invisível entre cada letra/número do mesmo bloco.",
+  },
+  {
+    key: "arquivo",
+    label: "Estilo arquivo",
+    desc: "Como em captures antigas: letras confundíveis (Unicode que *parece* latino) + ZWSP entre tudo — ex. “Teste 1” legível mas não pesquisável como texto cru.",
   },
 ];
 
@@ -32,6 +37,7 @@ export default function CamuflarTexto() {
   const [processing, setProcessing] = useState(false);
   const [remaining, setRemaining] = useState<number | null>(null);
   const [intensity, setIntensity] = useState<ObfuscateIntensity>("medio");
+  const [lastUsedIntensity, setLastUsedIntensity] = useState<ObfuscateIntensity | null>(null);
 
   useEffect(() => {
     if (user && profile) {
@@ -50,7 +56,12 @@ export default function CamuflarTexto() {
       await new Promise((r) => setTimeout(r, 80));
       const camouflaged = obfuscateTextForSearch(input, intensity);
       setOutput(camouflaged);
-      toast.success("Texto ofuscado — mesmas letras, com invisíveis entre elas.");
+      setLastUsedIntensity(intensity);
+      toast.success(
+        intensity === "arquivo"
+          ? "Texto no estilo arquivo — confundíveis + ZWSP (como em exemplos de captura)."
+          : "Texto ofuscado — mesmas letras latinas, com invisíveis entre elas.",
+      );
 
       if (user && profile) {
         const r = await getRemainingCredits(user.id, profile.plan, "text", profile);
@@ -72,8 +83,10 @@ export default function CamuflarTexto() {
         <div className="flex-1">
           <h1 className="text-2xl sm:text-3xl font-extrabold text-foreground">Chat Bot.IA</h1>
           <p className="text-muted-foreground text-sm mt-1">
-            Mantém o mesmo texto latino na tela; só acrescenta caracteres Unicode invisíveis entre letras.
-            Quem pesquisar o que digitou no teclado em geral não acha o trecho copiado daqui.
+            <strong className="text-foreground">Leve / Médio / Pesado:</strong> mesmas letras latinas + invisíveis entre elas.
+            <strong className="text-foreground"> Estilo arquivo:</strong> padrão tipo Wayback — glifos confundíveis
+            (ex. Т, е, ѕ no lugar de T, e, s) e ZWSP entre caracteres; lê-se igual, mas não é o mesmo texto que
+            digitas no Google.
           </p>
         </div>
         {remaining !== null && remaining !== Infinity && (
@@ -87,7 +100,7 @@ export default function CamuflarTexto() {
       <Card className="border-border mb-6">
         <CardContent className="p-6 space-y-4">
           <label className="text-sm font-medium text-foreground">Intensidade</label>
-          <div className="grid gap-2 sm:grid-cols-3">
+          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
             {INTENSITIES.map(({ key, label, desc }) => (
               <button
                 key={key}
@@ -136,7 +149,10 @@ export default function CamuflarTexto() {
         <Card className="border-green-500/30">
           <CardContent className="p-6 space-y-4">
             <div className="flex items-center justify-between gap-2 flex-wrap">
-              <label className="text-sm font-medium text-green-400">Texto ofuscado (latino + invisíveis)</label>
+              <label className="text-sm font-medium text-green-400">
+                Texto ofuscado
+                {lastUsedIntensity === "arquivo" ? " (estilo arquivo)" : " (latino + invisíveis)"}
+              </label>
               <Button
                 variant="ghost"
                 size="sm"
@@ -150,8 +166,18 @@ export default function CamuflarTexto() {
               </Button>
             </div>
             <p className="text-xs text-muted-foreground">
-              Não há letras russas nem símbolos estranhos: só o seu alfabeto latino e espaços “de largura zero”
-              que não aparecem na visualização.
+              {lastUsedIntensity === "arquivo" ? (
+                <>
+                  Neste modo os glifos podem ser Unicode confundível (cirílico/grego com o mesmo desenho que A–Z)
+                  mais ZWSP — é o truque de muitas bios / HTML arquivados; não é o mesmo ficheiro de bytes que
+                  “escrever no teclado”.
+                </>
+              ) : (
+                <>
+                  Só alfabeto latino (com acentos no bloco) e caracteres de largura zero entre letras — nada de
+                  cirílico nestes três modos.
+                </>
+              )}
             </p>
             <div className="rounded-lg border border-green-500/20 bg-green-500/5 p-4 text-sm text-foreground whitespace-pre-wrap break-all font-sans">
               {output}
