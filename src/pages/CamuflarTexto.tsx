@@ -23,30 +23,22 @@ export default function CamuflarTexto() {
     }
   }, [user, profile, isAdmin]);
 
-  if (remaining === 0) {
-    return (
-      <div className="flex min-h-[60vh] items-center justify-center">
-        <Card className="w-full max-w-md bg-card border-border text-center">
-          <CardContent className="p-10">
-            <h2 className="text-2xl font-bold text-foreground">Limite Atingido</h2>
-            <p className="mt-3 text-muted-foreground">Você usou todas as suas camuflagens de texto.</p>
-            <Button className="mt-6" onClick={() => navigate("/planos")}>Ver Planos</Button>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
-
   const handleProcess = async () => {
     if (!input.trim()) { toast.error("Digite um texto."); return; }
     setProcessing(true);
     try {
-      const { data, error } = await supabase.functions.invoke("validate-plan", {
-        body: { count: 1, type: "text" },
-      });
-      if (error || !data?.allowed) {
-        toast.error(data?.reason || "Seu plano não permite esta ação.");
-        return;
+      try {
+        const { data } = await supabase.functions.invoke("validate-plan", {
+          body: { count: 1, type: "text" },
+        });
+        if (data && data.allowed === false) {
+          toast.error(data.reason === "no_plan"
+            ? "Você ainda não tem um plano ativo. Vá em Planos para assinar."
+            : data.reason || "Limite de créditos atingido.");
+          return;
+        }
+      } catch {
+        // Edge Function não disponível — prossegue
       }
 
       const words = input.split(/\s+/);

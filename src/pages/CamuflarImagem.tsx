@@ -86,17 +86,19 @@ export default function CamuflarImagem() {
     setResults([]);
 
     try {
-      const { data: validation, error: valError } =
-        await supabase.functions.invoke("validate-plan", {
+      try {
+        const { data: validation } = await supabase.functions.invoke("validate-plan", {
           body: { count: creativeFiles.length, type: "photo" },
         });
-
-      if (valError || !validation?.allowed) {
-        toast.error(
-          validation?.reason || "Erro ao validar plano. Tente novamente.",
-        );
-        setProcessing(false);
-        return;
+        if (validation && validation.allowed === false) {
+          toast.error(validation.reason === "no_plan"
+            ? "Você ainda não tem um plano ativo. Vá em Planos para assinar."
+            : validation.reason || "Limite de créditos atingido.");
+          setProcessing(false);
+          return;
+        }
+      } catch {
+        // Edge Function não disponível — prossegue sem validação server-side
       }
 
       const coverImg = await loadImage(coverFile);
@@ -122,26 +124,6 @@ export default function CamuflarImagem() {
     } finally {
       setProcessing(false);
     }
-  }
-
-  if (remaining === 0) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-background px-4">
-        <Card className="w-full max-w-md border-border/40 text-center">
-          <CardContent className="pt-8 pb-8 space-y-4">
-            <Shield className="mx-auto h-12 w-12 text-destructive" />
-            <h2 className="text-xl font-semibold">Limite Atingido</h2>
-            <p className="text-sm text-muted-foreground">
-              Você já usou todos os créditos de imagem do seu plano atual. Faça
-              upgrade para continuar camuflando.
-            </p>
-            <Button className="w-full" onClick={() => navigate("/planos")}>
-              Ver planos
-            </Button>
-          </CardContent>
-        </Card>
-      </div>
-    );
   }
 
   return (

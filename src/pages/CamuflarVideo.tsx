@@ -182,16 +182,21 @@ export default function CamuflarVideo() {
     setResults([]);
 
     try {
-      const { data, error } = await supabase.functions.invoke("validate-plan", {
-        body: { count: videos.length, type: "video" },
-      });
-
-      if (error || !data?.allowed) {
-        toast.error(data?.reason || error?.message || "Erro ao validar plano.");
-        setProcessing(false);
-        setProgressText("");
-        setProgressValue(0);
-        return;
+      try {
+        const { data } = await supabase.functions.invoke("validate-plan", {
+          body: { count: videos.length, type: "video" },
+        });
+        if (data && data.allowed === false) {
+          toast.error(data.reason === "no_plan"
+            ? "Você ainda não tem um plano ativo. Vá em Planos para assinar."
+            : data.reason || "Limite de créditos atingido.");
+          setProcessing(false);
+          setProgressText("");
+          setProgressValue(0);
+          return;
+        }
+      } catch {
+        // Edge Function não disponível — prossegue
       }
 
       const initial: FileResult[] = videos.map((f) => ({ name: f.name, status: "queued" }));
@@ -230,23 +235,6 @@ export default function CamuflarVideo() {
     } finally {
       setProcessing(false);
     }
-  }
-
-  if (remaining === 0) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-background px-4">
-        <Card className="w-full max-w-md border-border/40 text-center">
-          <CardContent className="py-12 space-y-4">
-            <AlertTriangle className="h-12 w-12 mx-auto text-yellow-500" />
-            <h2 className="text-xl font-semibold">Limite Atingido</h2>
-            <p className="text-sm text-muted-foreground">
-              Seus créditos de vídeo acabaram. Faça upgrade do plano para continuar.
-            </p>
-            <Button onClick={() => navigate("/planos")}>Ver planos</Button>
-          </CardContent>
-        </Card>
-      </div>
-    );
   }
 
   return (
