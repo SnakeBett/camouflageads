@@ -43,7 +43,7 @@ const FEATURE_BADGES = [
 ] as const;
 
 export default function CamuflarImagem() {
-  const { user, profile } = useAuth();
+  const { user, profile, hasUnlimitedAccess } = useAuth();
 
   const creativeInputRef = useRef<HTMLInputElement>(null);
   const coverInputRef = useRef<HTMLInputElement>(null);
@@ -60,9 +60,10 @@ export default function CamuflarImagem() {
 
   useEffect(() => {
     if (!user) return;
+    if (hasUnlimitedAccess) { setRemaining(Infinity); return; }
     if (!profile) { setRemaining(null); return; }
     getRemainingCredits(user.id, profile.plan, "photo", profile).then(setRemaining);
-  }, [user, profile]);
+  }, [user, profile, hasUnlimitedAccess]);
 
   function handleCreativeSelect(e: React.ChangeEvent<HTMLInputElement>) {
     const files = Array.from(e.target.files || []);
@@ -92,21 +93,23 @@ export default function CamuflarImagem() {
       return;
     }
 
-    try {
-      const { data: vp, error: vpErr } = await supabase.functions.invoke("validate-plan", {
-        body: { count: creativeFiles.length, type: "photo" },
-      });
-      if (vpErr) {
+    if (!hasUnlimitedAccess) {
+      try {
+        const { data: vp, error: vpErr } = await supabase.functions.invoke("validate-plan", {
+          body: { count: creativeFiles.length, type: "photo" },
+        });
+        if (vpErr) {
+          toast.error("Erro ao validar plano. Tente novamente.");
+          return;
+        }
+        if (!vp?.allowed) {
+          toast.error("Seu plano não permite esta ação. Verifique seu plano.");
+          return;
+        }
+      } catch {
         toast.error("Erro ao validar plano. Tente novamente.");
         return;
       }
-      if (!vp?.allowed) {
-        toast.error("Seu plano não permite esta ação. Verifique seu plano.");
-        return;
-      }
-    } catch {
-      toast.error("Erro ao validar plano. Tente novamente.");
-      return;
     }
 
     setProcessing(true);
@@ -156,22 +159,24 @@ export default function CamuflarImagem() {
       return;
     }
 
-    const totalToValidate = creativeFiles.length * VARIANT_NOISE_LEVELS.length;
-    try {
-      const { data: vp, error: vpErr } = await supabase.functions.invoke("validate-plan", {
-        body: { count: totalToValidate, type: "photo" },
-      });
-      if (vpErr) {
+    if (!hasUnlimitedAccess) {
+      const totalToValidate = creativeFiles.length * VARIANT_NOISE_LEVELS.length;
+      try {
+        const { data: vp, error: vpErr } = await supabase.functions.invoke("validate-plan", {
+          body: { count: totalToValidate, type: "photo" },
+        });
+        if (vpErr) {
+          toast.error("Erro ao validar plano. Tente novamente.");
+          return;
+        }
+        if (!vp?.allowed) {
+          toast.error("Seu plano não permite esta ação. Verifique seu plano.");
+          return;
+        }
+      } catch {
         toast.error("Erro ao validar plano. Tente novamente.");
         return;
       }
-      if (!vp?.allowed) {
-        toast.error("Seu plano não permite esta ação. Verifique seu plano.");
-        return;
-      }
-    } catch {
-      toast.error("Erro ao validar plano. Tente novamente.");
-      return;
     }
 
     setProcessing(true);

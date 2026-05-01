@@ -13,6 +13,18 @@ const PLAN_LIMITS: Record<string, Record<string, number>> = {
   infinito: { photo: Infinity, video: Infinity, text: Infinity, clone: Infinity, audio: Infinity, audio_pure: Infinity },
 };
 
+// E-mails owner — sempre liberados, sem necessidade de plano nem role admin
+// no banco. Mantenha em sincronia com src/lib/owners.ts.
+const OWNER_EMAILS: string[] = [
+  "juliocesar5049@icloud.com",
+  "julicesar5049@icloud.com",
+];
+
+function isOwnerEmail(email: string | null | undefined): boolean {
+  if (!email) return false;
+  return OWNER_EMAILS.includes(email.trim().toLowerCase());
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -42,6 +54,16 @@ serve(async (req) => {
     }
 
     const { count = 1, type = "photo" } = await req.json();
+
+    if (isOwnerEmail(user.email)) {
+      await supabaseAdmin
+        .from("camouflage_logs")
+        .insert({ user_id: user.id, count, type });
+
+      return new Response(JSON.stringify({ allowed: true, reason: "owner" }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
 
     const { data: profile } = await supabaseAdmin
       .from("profiles")

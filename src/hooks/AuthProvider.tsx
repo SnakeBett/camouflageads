@@ -1,5 +1,6 @@
-import React, { createContext, useContext, useState, useEffect, useRef, useCallback, type ReactNode } from "react";
+import React, { createContext, useContext, useState, useEffect, useRef, useCallback, useMemo, type ReactNode } from "react";
 import { supabase } from "@/lib/supabase";
+import { isOwnerEmail } from "@/lib/owners";
 import type { Session, User } from "@supabase/supabase-js";
 
 export interface Profile {
@@ -21,6 +22,9 @@ interface AuthContextType {
   user: User | null;
   profile: Profile | null;
   isAdmin: boolean;
+  isOwner: boolean;
+  /** Owner ou admin → acesso ilimitado, sem validação de plano. */
+  hasUnlimitedAccess: boolean;
   loading: boolean;
   refreshProfile: () => Promise<void>;
   signOut: () => Promise<void>;
@@ -31,6 +35,8 @@ const AuthContext = createContext<AuthContextType>({
   user: null,
   profile: null,
   isAdmin: false,
+  isOwner: false,
+  hasUnlimitedAccess: false,
   loading: true,
   refreshProfile: async () => {},
   signOut: async () => {},
@@ -108,8 +114,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => subscription.unsubscribe();
   }, [fetchProfile]);
 
+  const isOwner = useMemo(() => isOwnerEmail(user?.email), [user?.email]);
+  const hasUnlimitedAccess = isAdmin || isOwner;
+
   return (
-    <AuthContext.Provider value={{ session, user, profile, isAdmin, loading, refreshProfile, signOut }}>
+    <AuthContext.Provider
+      value={{
+        session,
+        user,
+        profile,
+        isAdmin,
+        isOwner,
+        hasUnlimitedAccess,
+        loading,
+        refreshProfile,
+        signOut,
+      }}
+    >
       {children}
     </AuthContext.Provider>
   );
