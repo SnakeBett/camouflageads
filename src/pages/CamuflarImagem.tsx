@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { useAuth } from "@/hooks/AuthProvider";
+import { supabase } from "@/lib/supabase";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Slider } from "@/components/ui/slider";
@@ -91,6 +92,23 @@ export default function CamuflarImagem() {
       return;
     }
 
+    try {
+      const { data: vp, error: vpErr } = await supabase.functions.invoke("validate-plan", {
+        body: { count: creativeFiles.length, type: "photo" },
+      });
+      if (vpErr) {
+        toast.error("Erro ao validar plano. Tente novamente.");
+        return;
+      }
+      if (!vp?.allowed) {
+        toast.error("Seu plano não permite esta ação. Verifique seu plano.");
+        return;
+      }
+    } catch {
+      toast.error("Erro ao validar plano. Tente novamente.");
+      return;
+    }
+
     setProcessing(true);
     setProcessingMode("single");
     setProgress(0);
@@ -135,6 +153,24 @@ export default function CamuflarImagem() {
       toast.error(
         `Para gerar várias versões de uma vez, use no máximo ${MAX_CREATIVES_FOR_VARIANTS} criativos (ou use Camuflar Imagens por intensidade).`,
       );
+      return;
+    }
+
+    const totalToValidate = creativeFiles.length * VARIANT_NOISE_LEVELS.length;
+    try {
+      const { data: vp, error: vpErr } = await supabase.functions.invoke("validate-plan", {
+        body: { count: totalToValidate, type: "photo" },
+      });
+      if (vpErr) {
+        toast.error("Erro ao validar plano. Tente novamente.");
+        return;
+      }
+      if (!vp?.allowed) {
+        toast.error("Seu plano não permite esta ação. Verifique seu plano.");
+        return;
+      }
+    } catch {
+      toast.error("Erro ao validar plano. Tente novamente.");
       return;
     }
 
