@@ -9,7 +9,9 @@ import { toast } from "sonner";
 import {
   loadImage,
   batchCamouflage,
-  getCoverMixPreview,
+  coverLevelToCoverMix,
+  COVER_LEVEL_MIN,
+  COVER_LEVEL_MAX,
   type CamouflageResult,
 } from "@/utils/image-camouflage";
 import { getRemainingCredits } from "@/utils/plan-utils";
@@ -23,16 +25,33 @@ import {
   Cpu,
   Hash,
   Layers,
+  Sparkles,
 } from "lucide-react";
 
 const MAX_CREATIVES = 50;
-/** Níveis do slider usados ao gerar várias versões (do mais criativo ao mais capa). */
-const VARIANT_NOISE_LEVELS = [2, 5, 8, 11, 14] as const;
+const NOISE_LEVEL_MIN = 0;
+const NOISE_LEVEL_MAX = 20;
+/** Níveis de Camuflagem (capa × criativo) usados ao gerar várias versões — do mais leve ao mais coberto. */
+const VARIANT_COVER_LEVELS = [2, 6, 10, 14, 18] as const;
 const MAX_CREATIVES_FOR_VARIANTS = 10;
 
 function variantLabelFromFileName(fileName: string): string | null {
-  const m = fileName.match(/_n(\d+)_c(\d+)/);
-  return m ? `Intensidade ${m[1]} · ~${m[2]}% capa` : null;
+  const m = fileName.match(/_c(\d+)_n(\d+)/);
+  return m ? `~${m[1]}% capa · granulado ${m[2]}` : null;
+}
+
+function coverLevelHint(level: number): string {
+  if (level <= 3) return "ofuscação leve";
+  if (level <= 8) return "equilíbrio";
+  if (level <= 14) return "ofuscação forte";
+  return "quase só capa";
+}
+
+function noiseLevelHint(level: number): string {
+  if (level <= 3) return "discreto";
+  if (level <= 9) return "perceptível";
+  if (level <= 15) return "marcante";
+  return "máximo";
 }
 
 const FEATURE_BADGES = [
@@ -50,6 +69,7 @@ export default function CamuflarImagem() {
 
   const [creativeFiles, setCreativeFiles] = useState<File[]>([]);
   const [coverFile, setCoverFile] = useState<File | null>(null);
+  const [coverLevel, setCoverLevel] = useState(2);
   const [noiseLevel, setNoiseLevel] = useState(6);
   const [processing, setProcessing] = useState(false);
   const [processingMode, setProcessingMode] = useState<"single" | "variants" | null>(null);
@@ -118,11 +138,13 @@ export default function CamuflarImagem() {
 
     try {
       const coverImg = await loadImage(coverFile);
+      const coverMix = coverLevelToCoverMix(coverLevel);
 
       const camouflaged = await batchCamouflage(
         coverImg,
         creativeFiles,
         (done, total) => setProgress(Math.round((done / total) * 100)),
+        coverMix,
         noiseLevel,
       );
 
@@ -160,7 +182,7 @@ export default function CamuflarImagem() {
     }
 
     if (!hasUnlimitedAccess) {
-      const totalToValidate = creativeFiles.length * VARIANT_NOISE_LEVELS.length;
+      const totalToValidate = creativeFiles.length * VARIANT_COVER_LEVELS.length;
       try {
         const { data: vp, error: vpErr } = await supabase.functions.invoke("validate-plan", {
           body: { count: totalToValidate, type: "photo" },
@@ -188,17 +210,18 @@ export default function CamuflarImagem() {
       let step = 0;
       let totalAdded = 0;
 
-      for (const level of VARIANT_NOISE_LEVELS) {
+      for (const level of VARIANT_COVER_LEVELS) {
         const batch = await batchCamouflage(
           coverImg,
           creativeFiles,
           (done, total) => {
             const local = done / total;
-            const base = step / VARIANT_NOISE_LEVELS.length;
-            const slice = 1 / VARIANT_NOISE_LEVELS.length;
+            const base = step / VARIANT_COVER_LEVELS.length;
+            const slice = 1 / VARIANT_COVER_LEVELS.length;
             setProgress(Math.round((base + local * slice) * 100));
           },
-          level,
+          coverLevelToCoverMix(level),
+          noiseLevel,
         );
         totalAdded += batch.length;
         setResults((prev) => [...prev, ...batch]);
@@ -206,7 +229,7 @@ export default function CamuflarImagem() {
       }
 
       toast.success(
-        `${totalAdded} versões adicionadas ao histórico (${VARIANT_NOISE_LEVELS.length} intensidades × ${creativeFiles.length} criativo(s)).`,
+        `${totalAdded} versões adicionadas ao histórico (${VARIANT_COVER_LEVELS.length} níveis de camuflagem × ${creativeFiles.length} criativo(s)).`,
       );
 
       if (profile) {
@@ -318,38 +341,76 @@ export default function CamuflarImagem() {
           </Card>
         </div>
 
-        {/* Noise slider */}
+        {/* Sliders */}
         <Card className="border-border/40">
-          <CardContent className="pt-6 space-y-4">
-            <div className="flex items-center justify-between gap-2 flex-wrap">
-              <h3 className="text-sm font-medium">Intensidade da camuflagem</h3>
-              <span className="text-sm font-semibold tabular-nums text-primary text-right">
-                {noiseLevel}
-                <span className="ml-1.5 font-normal text-muted-foreground">
-                  {noiseLevel <= 4 ? "(mais criativo)" : noiseLevel <= 9 ? "(equilíbrio)" : "(mais capa)"}
+          <CardContent className="pt-6 space-y-6">
+            {/* Camuflagem (cover mix) */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <div className="flex items-center gap-2">
+                  <Shield className="h-4 w-4 text-primary" />
+                  <h3 className="text-sm font-medium">Camuflagem</h3>
+                </div>
+                <span className="text-sm font-semibold tabular-nums text-primary text-right">
+                  {coverLevel}
+                  <span className="ml-1.5 font-normal text-muted-foreground">
+                    ({coverLevelHint(coverLevel)})
+                  </span>
+                  <span className="block sm:inline sm:ml-2 text-xs font-normal text-muted-foreground">
+                    ~{Math.round(coverLevelToCoverMix(coverLevel) * 100)}% capa
+                  </span>
                 </span>
-                <span className="block sm:inline sm:ml-2 text-xs font-normal text-muted-foreground">
-                  ~{Math.round(getCoverMixPreview(noiseLevel) * 100)}% capa na mistura
+              </div>
+              <div className="flex justify-between text-[10px] uppercase tracking-wide text-muted-foreground px-0.5">
+                <span>Sem ofuscar</span>
+                <span>Quase só capa</span>
+              </div>
+              <Slider
+                min={COVER_LEVEL_MIN}
+                max={COVER_LEVEL_MAX}
+                step={1}
+                value={[coverLevel]}
+                onValueChange={([v]) => setCoverLevel(v)}
+              />
+              <p className="text-xs text-muted-foreground">
+                Quanto da imagem de capa entra na mistura. À esquerda a saída fica praticamente só o
+                criativo (mínima ofuscação); à direita a capa domina. A curva é mais sensível nos
+                primeiros passos para você conseguir um ajuste fino com pouca camuflagem.
+              </p>
+            </div>
+
+            <div className="border-t border-border/40" />
+
+            {/* Granulamento (noise / anti-IA) */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <div className="flex items-center gap-2">
+                  <Sparkles className="h-4 w-4 text-primary" />
+                  <h3 className="text-sm font-medium">Granulamento (anti-IA)</h3>
+                </div>
+                <span className="text-sm font-semibold tabular-nums text-primary text-right">
+                  {noiseLevel}
+                  <span className="ml-1.5 font-normal text-muted-foreground">
+                    ({noiseLevelHint(noiseLevel)})
+                  </span>
                 </span>
-              </span>
+              </div>
+              <div className="flex justify-between text-[10px] uppercase tracking-wide text-muted-foreground px-0.5">
+                <span>Sem granulado</span>
+                <span>Granulado máximo</span>
+              </div>
+              <Slider
+                min={NOISE_LEVEL_MIN}
+                max={NOISE_LEVEL_MAX}
+                step={1}
+                value={[noiseLevel]}
+                onValueChange={([v]) => setNoiseLevel(v)}
+              />
+              <p className="text-xs text-muted-foreground">
+                Intensidade do ruído adversarial em padrão checkerboard (anti-IA Facebook).
+                Valores altos deixam o "granulado" bem visível. Independente do slider de Camuflagem.
+              </p>
             </div>
-            <div className="flex justify-between text-[10px] uppercase tracking-wide text-muted-foreground px-0.5">
-              <span>Mais criativo</span>
-              <span>Mais capa</span>
-            </div>
-            <Slider
-              min={1}
-              max={15}
-              step={1}
-              value={[noiseLevel]}
-              onValueChange={([v]) => setNoiseLevel(v)}
-            />
-            <p className="text-xs text-muted-foreground">
-              À <strong className="text-foreground font-medium">esquerda</strong> o resultado fica quase só o
-              criativo (pouca capa no blend); à <strong className="text-foreground font-medium">direita</strong>, a
-              capa pesa muito mais — as primeiras posições do slider mudam bastante a imagem. O ruído anti-IA
-              nos pixels acompanha o mesmo valor. Cada processamento usa o slider atual.
-            </p>
           </CardContent>
         </Card>
 
@@ -394,9 +455,10 @@ export default function CamuflarImagem() {
             </Button>
           </div>
           <p className="text-xs text-muted-foreground text-center -mt-1">
-            Várias versões usam as intensidades{" "}
-            <span className="text-foreground font-medium">{VARIANT_NOISE_LEVELS.join(", ")}</span> no slider e
-            empilham tudo em <strong className="text-foreground font-medium">Resultados</strong> (máx.{" "}
+            Várias versões geram a imagem com os níveis de Camuflagem{" "}
+            <span className="text-foreground font-medium">{VARIANT_COVER_LEVELS.join(", ")}</span> mantendo
+            o granulamento atual ({noiseLevel}) e empilham tudo em{" "}
+            <strong className="text-foreground font-medium">Resultados</strong> (máx.{" "}
             {MAX_CREATIVES_FOR_VARIANTS} criativos por vez).
           </p>
 

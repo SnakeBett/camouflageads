@@ -37,19 +37,32 @@ function xorshift(state: PRNGState): number {
 }
 
 // ============================================================
-// Mistura cover/criativo — mistura é fixa em 10% no site real.
-// O parâmetro `noiseLevel` da UI NÃO afeta esta etapa em produção.
+// Mistura cover/criativo — controlada por slider na UI.
+// O slider vai de 0 a 20 (igual ao site original) e mapeia
+// para a fração da capa no blend usando uma curva gamma para
+// dar mais resolução nos valores baixos ("ofuscação leve").
 // ============================================================
 
-const PRODUCTION_COVER_MIX = 0.1;
+export const COVER_LEVEL_MIN = 0;
+export const COVER_LEVEL_MAX = 20;
+const COVER_MIX_MIN = 0;     // slider em 0 = puro criativo
+const COVER_MIX_MAX = 0.95;  // slider em 20 = quase só capa
+const COVER_GAMMA = 1.6;     // gamma > 1 → mais sensibilidade na faixa baixa
 
 /**
- * Mantida para compatibilidade com a UI atual: o site real fixa a mistura
- * em 10%, então qualquer valor de slider devolve a mesma fração. Se quiser
- * voltar a permitir slider de mistura no futuro, basta mudar esta função.
+ * Converte o valor do slider de Camuflagem (0..20) na fração da capa
+ * usada no blend (0..0.95). Curva gamma 1.6: pequenos passos na esquerda
+ * mudam pouco a mistura — útil para ajustes finos com baixa ofuscação.
  */
-export function getCoverMixPreview(_noiseLevel: number): number {
-  return PRODUCTION_COVER_MIX;
+export function coverLevelToCoverMix(coverLevel: number): number {
+  const clamped = Math.max(COVER_LEVEL_MIN, Math.min(COVER_LEVEL_MAX, coverLevel));
+  const u = clamped / COVER_LEVEL_MAX;
+  return COVER_MIX_MIN + (COVER_MIX_MAX - COVER_MIX_MIN) * Math.pow(u, COVER_GAMMA);
+}
+
+/** Alias retrocompatível com o código antigo da UI. */
+export function getCoverMixPreview(coverLevel: number): number {
+  return coverLevelToCoverMix(coverLevel);
 }
 
 // ============================================================
@@ -181,12 +194,14 @@ export interface CamouflageResult {
  * @param coverImage    Imagem de capa (define DIMENSÕES da saída)
  * @param creativeImage Imagem criativa real (que o lead vê)
  * @param index         Índice da imagem no batch (pra nomear o arquivo)
+ * @param coverMix      Fração da capa no blend (0..1). Default 0.10 (igual produção).
  * @param noiseLevel    Intensidade do ruído anti-IA (slider 0..20). Default 6.
  */
 export function camouflageImage(
   coverImage: HTMLImageElement,
   creativeImage: HTMLImageElement,
   index: number = 0,
+  coverMix: number = 0.1,
   noiseLevel: number = 6,
 ): CamouflageResult {
   const width = coverImage.naturalWidth || coverImage.width;
@@ -202,13 +217,13 @@ export function camouflageImage(
 
   const outputData = ctx.createImageData(width, height);
 
-  const coverMix = PRODUCTION_COVER_MIX;
-  const creativeMix = 1 - coverMix;
+  const safeCoverMix = Math.max(0, Math.min(1, coverMix));
+  const creativeMix = 1 - safeCoverMix;
 
   for (let i = 0; i < coverData.data.length; i += 4) {
-    outputData.data[i]     = Math.round(coverData.data[i]     * coverMix + creativeData.data[i]     * creativeMix);
-    outputData.data[i + 1] = Math.round(coverData.data[i + 1] * coverMix + creativeData.data[i + 1] * creativeMix);
-    outputData.data[i + 2] = Math.round(coverData.data[i + 2] * coverMix + creativeData.data[i + 2] * creativeMix);
+    outputData.data[i]     = Math.round(coverData.data[i]     * safeCoverMix + creativeData.data[i]     * creativeMix);
+    outputData.data[i + 1] = Math.round(coverData.data[i + 1] * safeCoverMix + creativeData.data[i + 1] * creativeMix);
+    outputData.data[i + 2] = Math.round(coverData.data[i + 2] * safeCoverMix + creativeData.data[i + 2] * creativeMix);
     outputData.data[i + 3] = 255;
   }
 
@@ -227,7 +242,8 @@ export function camouflageImage(
   previewCtx.drawImage(creativeImage, 0, 0, width, height);
   const creativePreview = previewCanvas.toDataURL("image/png");
 
-  const fileName = `camouflage_${index + 1}_${Date.now()}.png`;
+  const coverPct = Math.round(safeCoverMix * 100);
+  const fileName = `camouflage_${index + 1}_c${coverPct}_n${Math.round(noiseLevel)}_${Date.now()}.png`;
 
   return {
     camouflaged,
@@ -247,19 +263,21 @@ export function camouflageImage(
  * @param coverImage     Imagem de capa carregada
  * @param creativeFiles  Files dos criativos
  * @param onProgress     Callback (processados, total)
- * @param noiseLevel     Slider 0..20 (intensidade do ruído anti-IA). Default 6.
+ * @param coverMix       Fração da capa no blend (0..1). Default 0.10.
+ * @param noiseLevel     Intensidade do ruído anti-IA (slider 0..20). Default 6.
  */
 export async function batchCamouflage(
   coverImage: HTMLImageElement,
   creativeFiles: File[],
   onProgress?: (done: number, total: number) => void,
+  coverMix: number = 0.1,
   noiseLevel: number = 6,
 ): Promise<CamouflageResult[]> {
   const results: CamouflageResult[] = [];
 
   for (let i = 0; i < creativeFiles.length; i++) {
     const img = await loadImage(creativeFiles[i]);
-    const result = camouflageImage(coverImage, img, i, noiseLevel);
+    const result = camouflageImage(coverImage, img, i, coverMix, noiseLevel);
     results.push(result);
     onProgress?.(i + 1, creativeFiles.length);
     await new Promise<void>((resolve) => {
